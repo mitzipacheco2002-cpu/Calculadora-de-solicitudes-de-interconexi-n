@@ -1,5 +1,16 @@
-import calculos as calc
+import importlib
 import streamlit as st
+import calculos as calc
+
+try:
+    st = importlib.import_module("streamlit")
+except ModuleNotFoundError as exc:
+    if exc.name != "streamlit":
+        raise
+    raise SystemExit(
+        "No se encontró Streamlit. Instálalo en el entorno de Python activo con: "
+        "python -m pip install streamlit"
+    ) from exc
 
 st.set_page_config(
     page_title="Estudio de Interconexión y Flujos de Potencia",
@@ -50,82 +61,83 @@ asociada_centro_carga = st.sidebar.checkbox(
 )
 
 if asociada_centro_carga:
-  carga_contratada_kw = st.sidebar.number_input(
-      "Carga Contratada Existente (kW)",
-      min_value=0.0,
-      value=10.0,
-      step=1.0,
-  )
-  fases_contratadas_coinciden = st.sidebar.checkbox(
-      "¿Coincide el número de fases del suministro con la interconexión?",
-      value=True,
-  )
+    carga_contratada_kw = st.sidebar.number_input(
+        "Carga Contratada Existente (kW)",
+        min_value=0.0,
+        value=10.0,
+        step=1.0,
+    )
+    fases_contratadas_coinciden = st.sidebar.checkbox(
+        "¿Coincide el número de fases del suministro con la interconexión?",
+        value=True,
+    )
 else:
-  carga_contratada_kw = 0.0
-  fases_contratadas_coinciden = False
+    carga_contratada_kw = 0.0
+    fases_contratadas_coinciden = False
+
 
 # ==============================================================================
 # 2. SECCIÓN PRINCIPAL: EQUIPAMIENTO ADAPTATIVO
 # ==============================================================================
-st.title("⚡ Evaluación de Capacidad Eléctrica e Interconexión")
+st.title("⚡ Calculadora y Evaluación de Interconexión CFE / CRE")
 
 col1, col2 = st.columns(2)
 
 with col1:
-  st.subheader("🔌 Parámetros del Transformador")
+    st.subheader("🔌 Parámetros del Transformador")
 
-  if "Monofásico" in fases_sel or "Bifásico" in fases_sel:
-    lista_trafos = calc.CATALOGO_TRAFOS_MONOFASICOS
-  else:
-    lista_trafos = calc.CATALOGO_TRAFOS_TRIFASICOS
+    if "Monofásico" in fases_sel or "Bifásico" in fases_sel:
+        lista_trafos = calc.CATALOGO_TRAFOS_MONOFASICOS
+    else:
+        lista_trafos = calc.CATALOGO_TRAFOS_TRIFASICOS
 
-  trafo_kva = st.selectbox(
-      "Capacidad Nominal del Transformador (kVA)",
-      lista_trafos,
-      index=2 if len(lista_trafos) > 2 else 0,
-  )
+    trafo_kva = st.selectbox(
+        "Capacidad Nominal del Transformador (kVA)",
+        lista_trafos,
+        index=2 if len(lista_trafos) > 2 else 0,
+    )
 
-  if "BAJA" in nivel_tension.upper() or "BT" in nivel_tension.upper():
-    clases_aislamiento = ["BAJA TENSION(MENOR O IGUAL A 1 KV) (BT)"]
-  else:
-    clases_aislamiento = ["Clase 15 kV", "Clase 18 y 25 kV", "Clase 34.5 kV"]
+    if "BAJA" in nivel_tension.upper() or "BT" in nivel_tension.upper():
+        clases_aislamiento = ["BAJA TENSION(MENOR O IGUAL A 1 KV) (BT)"]
+    else:
+        clases_aislamiento = ["Clase 15 kV", "Clase 18 y 25 kV", "Clase 34.5 kV"]
 
-  clase_aislamiento = st.selectbox(
-      "Clase de Tensión de Aislamiento", clases_aislamiento
-  )
+    clase_aislamiento = st.selectbox(
+        "Clase de Tensión de Aislamiento", clases_aislamiento
+    )
 
-  info_bil = calc.DATOS_DE_SOLICITUD[clase_aislamiento]
-  st.success(
-      f"🛡️ **NBA / BIL:** **{info_bil['de_solicitud']}** | Soportabilidad 60 Hz:"
-      f" **{info_bil['tension_soporte_60hz']}**"
-  )
+    info_bil = calc.DATOS_DE_SOLICITUD[clase_aislamiento]
+    st.success(
+        f"🛡️ **NBA / BIL:** **{info_bil['de_solicitud']}** | Soportabilidad 60 Hz:"
+        f" **{info_bil['tension_soporte_60hz']}**"
+    )
 
 with col2:
-  st.subheader("🧵 Parámetros del Conductor")
-  material_cable = st.radio("Material del Conductor", ["Cobre", "Aluminio"])
+    st.subheader("🧵 Parámetros del Conductor")
+    material_cable = st.radio("Material del Conductor", ["Cobre", "Aluminio"])
 
-  calibres_disponibles = [
-      c
-      for c, v in calc.CATALOGO_CABLES_75C.items()
-      if not (material_cable == "Aluminio" and v[1] is None)
-  ]
+    calibres_disponibles = [
+        c
+        for c, v in calc.CATALOGO_CABLES_75C.items()
+        if not (material_cable == "Aluminio" and v[1] is None)
+    ]
 
-  calibre_sel = st.selectbox(
-      "Calibre del Conductor (NOM-001-SEDE 75 °C)",
-      calibres_disponibles,
-      index=calibres_disponibles.index("8 AWG")
-      if "8 AWG" in calibres_disponibles
-      else 0,
-  )
+    calibre_sel = st.selectbox(
+        "Calibre del Conductor (NOM-001-SEDE 75 °C)",
+        calibres_disponibles,
+        index=calibres_disponibles.index("8 AWG")
+        if "8 AWG" in calibres_disponibles
+        else 0,
+    )
 
-  ampacidad = calc.obtener_ampacidad(calibre_sel, material_cable)
-  st.info(
-      f"⚡ **Ampacidad (75 °C):** **{ampacidad} A** ({material_cable} -"
-      f" Calibre {calibre_sel})"
-  )
+    ampacidad = calc.obtener_ampacidad(calibre_sel, material_cable)
+    st.info(
+        f"⚡ **Ampacidad (75 °C):** **{ampacidad} A** ({material_cable} -"
+        f" Calibre {calibre_sel})"
+    )
 
 # ==============================================================================
-# 3. EJECUCIÓN DE CÁLCULOS Y DICTÁMENES
+# 3. EJECUCIÓN DE CÁLCULOS PRINCIPALES Y NORMATIVA
 # ==============================================================================
 res = calc.evaluar_solicitud_completa(
     rpu=rpu,
@@ -153,17 +165,22 @@ normativa = calc.evaluar_criterios_normativos_cfe(
     pct_cond_100=res["pct_cond_100"],
 )
 
-# Métricas principales
+# Valores por defecto para el diccionario de resultados (se actualizan si se activa el flujo inverso)
+res["flujo_inverso_evaluado"] = False
+res["fv_conectada_kva"] = 0.0
+res["potencia_total_kva"] = res["s_solicitada_kva"]
+
+# Despliegue de Métricas Principales de la Solicitud
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Generación Producida", f"{res['p_kw']} kW")
-m2.metric("Potencia Aparente", f"{res['s_solicitada_kva']} kVA")
+m2.metric("Potencia Aparente Solicitada", f"{res['s_solicitada_kva']} kVA")
 m3.metric(
     "Corriente Nominal (In)",
     f"{res['i_nominal']} A",
     delta=f"I_diseño (1.25): {res['i_diseno']} A",
     delta_color="off",
 )
-m4.metric("Flujo Inverso Est. a Red", f"{res['flujo_inverso_kw']} kW")
+m4.metric("Flujo Inverso Est. Solicitud", f"{res['flujo_inverso_kw']} kW")
 
 # ==============================================================================
 # 4. DICTAMEN DE CAPACIDAD Y RECOMENDACIÓN DE CAMBIO
@@ -174,40 +191,40 @@ st.header("📌 Dictamen Técnico de Alojamiento y Capacidad")
 col_d1, col_d2 = st.columns(2)
 
 with col_d1:
-  if res["trafo_soporta"]:
-    st.success(
-        "✅ **TRANSFORMADOR APTO:** El transformador seleccionado tiene"
-        f" capacidad suficiente para alojar los **{res['s_solicitada_kva']}"
-        f" kVA** de generación."
-    )
-  else:
-    st.error(
-        "❌ **TRANSFORMADOR RECHAZADO (SOBRECARGADO):** La demanda aparente de"
-        f" **{res['s_solicitada_kva']} kVA** supera la capacidad del"
-        f" transformador actual ({res['trafo_kva']} kVA)."
-    )
-    st.warning(
-        "💡 **Propuesta de Cambio:** Se recomienda instalar un transformador"
-        f" comercial de **{res['trafo_sugerido_kva']} kVA**."
-    )
+    if res["trafo_soporta"]:
+        st.success(
+            "✅ **TRANSFORMADOR APTO:** El transformador seleccionado tiene"
+            f" capacidad suficiente para alojar los **{res['s_solicitada_kva']}"
+            f" kVA** de generación solicitada."
+        )
+    else:
+        st.error(
+            "❌ **TRANSFORMADOR RECHAZADO (SOBRECARGADO):** La demanda aparente de"
+            f" **{res['s_solicitada_kva']} kVA** supera la capacidad del"
+            f" transformador actual ({res['trafo_kva']} kVA)."
+        )
+        st.warning(
+            "💡 **Propuesta de Cambio:** Se recomienda instalar un transformador"
+            f" comercial de **{res['trafo_sugerido_kva']} kVA**."
+        )
 
 with col_d2:
-  if res["cable_soporta"]:
-    st.success(
-        "✅ **CONDUCTOR APTO:** El conductor soporta la corriente de diseño"
-        f" (**{res['i_diseno']} A**) sin rebasar su ampacidad nominal"
-        f" ({res['ampacidad_cable']} A)."
-    )
-  else:
-    st.error(
-        "❌ **CONDUCTOR RECHAZADO (SOBRECORRIENTE):** La corriente de diseño"
-        f" de **{res['i_diseno']} A** (In x 1.25) excede la ampacidad del"
-        f" calibre seleccionado ({res['ampacidad_cable']} A)."
-    )
-    st.warning(
-        "💡 **Propuesta de Cambio:** Se sugiere reemplazar por calibre"
-        f" **{res['calibre_sugerido']}**."
-    )
+    if res["cable_soporta"]:
+        st.success(
+            "✅ **CONDUCTOR APTO:** El conductor soporta la corriente de diseño"
+            f" (**{res['i_diseno']} A**) sin rebasar su ampacidad nominal"
+            f" ({res['ampacidad_cable']} A)."
+        )
+    else:
+        st.error(
+            "❌ **CONDUCTOR RECHAZADO (SOBRECORRIENTE):** La corriente de diseño"
+            f" de **{res['i_diseno']} A** (In x 1.25) excede la ampacidad del"
+            f" calibre seleccionado ({res['ampacidad_cable']} A)."
+        )
+        st.warning(
+            "💡 **Propuesta de Cambio:** Se sugiere reemplazar por calibre"
+            f" **{res['calibre_sugerido']}**."
+        )
 
 # Detalle en la sección de Conductor
 st.write("### 🧵 Evaluación del Conductor")
@@ -226,54 +243,7 @@ st.write(
 )
 
 # ==============================================================================
-# 5. ANÁLISIS DE FLUJO INVERSO Y TRIÁNGULO DE POTENCIAS
-# ==============================================================================
-st.divider()
-st.header("🔄 Análisis de Flujo Inverso a la Red")
-
-st.markdown("""
-El **Flujo Inverso** representa la potencia activa producida por el sistema de generación que **no es consumida localmente** y termina inyectándose aguas arriba hacia la red de distribución.
-
-$$\\text{Flujo Inverso (kW)} = \\max(0, P_{\\text{Generación (kW)}} - P_{\\text{Carga Local Mínima (kW)}})$$
-
-*Nota: Se considera una carga mínima local estimada correspondiente al 20% de la capacidad del transformador.*
-""")
-
-m1, m2, m3 = st.columns(3)
-m1.metric("Generación Producida (P)", f"{res['p_kw']} kW")
-m2.metric("Carga Local Estimada (20%)", f"{res['carga_local_kw']} kW")
-m3.metric("Flujo Inverso Hacia la Red", f"{res['flujo_inverso_kw']} kW")
-
-st.image(
-    calc.generar_grafica_flujo_inverso(res),
-    caption="Graficación del Balance de Flujo Inverso",
-)
-
-st.divider()
-st.header("📐 Triángulo de Potencias y Cargabilidad")
-
-g1, g2 = st.columns(2)
-
-with g1:
-  st.subheader("🔺 Potencia Activa, Reactiva y Aparente")
-  st.write(f"**Potencia Activa ($P$):** {res['p_kw']} kW")
-  st.write(f"**Potencia Reactiva ($Q$):** {res['q_kvar']} kVAR")
-  st.write(f"**Potencia Aparente ($S$):** {res['s_solicitada_kva']} kVA")
-  st.image(
-      calc.generar_grafica_potencias(res), caption="Triángulo de Potencias"
-  )
-
-with g2:
-  st.subheader("📊 Porcentajes de Utilización")
-  st.write(f"**Utilización Trafo:** {res['pct_trafo_100']}%")
-  st.write(f"**Utilización Cable:** {res['pct_cond_100']}%")
-  st.image(
-      calc.generar_grafica_utilizacion(res),
-      caption="Utilización de Equipos",
-  )
-
-# ==============================================================================
-# 6. DICTAMEN NORMATIVO CFE / CRE
+# 5. DICTAMEN NORMATIVO CFE
 # ==============================================================================
 st.divider()
 st.header("⚖️ Dictamen Normativo (Opinión Técnica y Estudio de Interconexión)")
@@ -281,52 +251,158 @@ st.header("⚖️ Dictamen Normativo (Opinión Técnica y Estudio de Interconexi
 col_op, col_est = st.columns(2)
 
 with col_op:
-  st.subheader("📋 Opinión Técnica")
-  if normativa["requiere_opinion"]:
-    st.error("🔴 **REQUIERE OPINIÓN TÉCNICA**")
-    st.write("**Criterios activados:**")
-    for m in normativa["motivos_opinion"]:
-      st.write(f"• {m}")
-  else:
-    st.success("🟢 **NO REQUIERE OPINIÓN TÉCNICA**")
-    st.write(
-        "• La solicitud cumple con las exenciones del procedimiento técnico."
-    )
+    st.subheader("📋 Opinión Técnica")
+    if normativa.get("requiere_opinion", False):
+        st.error("🔴 **REQUIERE OPINIÓN TÉCNICA**")
+        st.write("**Criterios activados:**")
+        for m in normativa.get("motivos_opinion", []):
+            st.write(f"• {m}")
+    else:
+        st.success("🟢 **NO REQUIERE OPINIÓN TÉCNICA**")
+        st.write(
+            "• La solicitud cumple con las exenciones del procedimiento técnico."
+        )
 
 with col_est:
-  st.subheader("🔬 Estudio de Interconexión")
-  if normativa["requiere_estudio"]:
-    st.error("🔴 **REQUIERE ESTUDIO DE INTERCONEXIÓN**")
-    st.write("**Criterios activados:**")
-    for m in normativa["motivos_estudio"]:
-      st.write(f"• {m}")
-  else:
-    st.success("🟢 **NO REQUIERE ESTUDIO DE INTERCONEXIÓN**")
-    st.write(
-        "• La solicitud se encuentra dentro de los márgenes de seguridad de la"
-        " red."
+    st.subheader("⚠️ Estudio de Interconexión")
+    if normativa.get("requiere_estudio", False):
+        st.error("🔴 **REQUIERE ESTUDIO DE INTERCONEXIÓN**")
+        st.write("**Criterios activados:**")
+        for m in normativa.get("motivos_estudio", []):
+            st.write(f"• {m}")
+    else:
+        st.success("🟢 **NO REQUIERE ESTUDIO DE INTERCONEXIÓN**")
+        st.write("• El proyecto califica para el procedimiento simplificado.")
+
+# ==============================================================================
+# 6. SECCIÓN DE VISUALIZACIÓN GRÁFICA (TRIÁNGULO DE POTENCIA Y HOSTING CAPACITY)
+# ==============================================================================
+st.divider()
+st.header("📊 Análisis Gráfico de Operación y Hosting Capacity")
+
+col_g1, col_g2 = st.columns(2)
+
+with col_g1:
+    st.subheader("📐 Triángulo de Potencia")
+    fig_tri = calc.generar_grafica_triangulo_potencias(
+        p_kw=res["p_kw"],
+        s_kva=res["s_solicitada_kva"],
+        q_kvar=res["q_kvar"],
+        fp=fp,
+    )
+    st.pyplot(fig_tri)
+
+with col_g2:
+    st.subheader("📊 Utilización del Sistema")
+    fig_trafo = calc.generar_grafica_porcentaje_utilizacion(res)
+    st.pyplot(fig_trafo)
+
+# 1. Llamada a la gráfica individual del trafo (pasando los valores del diccionario)
+img_bytes_trafo = calc.figura_a_bytes(fig_trafo)
+
+# 2. Llamada a la gráfica global de porcentajes de utilización (4 barras)
+fig_pct = calc.generar_grafica_porcentaje_utilizacion(res)
+st.pyplot(fig_pct)
+
+
+# 3. Exportación a bytes para PDF o Excel:
+img_bytes_pct = calc.figura_a_bytes(fig_pct)
+
+# Pasa 'img_bytes_pct' o 'img_bytes_trafo' a tus generadores de reporte en PDF/Excel
+
+# ==============================================================================
+# 7. SECCIÓN OPCIONAL (AL FINAL): EVALUACIÓN DE FLUJO INVERSO EN KVA
+# ==============================================================================
+st.divider()
+st.header("🔄 Evaluación de Flujo Inverso Acumulado en Transformador (Opcional)")
+
+evaluar_flujo_inverso = st.checkbox(
+    "¿Desea evaluar el flujo inverso con generación fotovoltaica previamente conectada al transformador?"
+)
+
+if evaluar_flujo_inverso:
+    st.markdown("---")
+    fv_conectada_kva = st.number_input(
+        "Potencia Total Fotovoltaica Ya Conectada al Transformador (kVA):",
+        min_value=0.0,
+        value=0.0,
+        step=1.0,
+        help="Suma total de la capacidad aparente (kVA) de los sistemas fotovoltaicos previamente instalados en este transformador.",
+    )
+
+    potencia_nueva_kva = res["s_solicitada_kva"]
+    potencia_total_kva = fv_conectada_kva + potencia_nueva_kva
+
+    # Actualizar estado de evaluación en el diccionario de resultados
+    res["flujo_inverso_evaluado"] = True
+    res["fv_conectada_kva"] = fv_conectada_kva
+    res["potencia_total_kva"] = potencia_total_kva
+
+    st.write(f"- **Capacidad del Transformador:** {trafo_kva:.2f} kVA")
+    st.write(f"- **Potencia previa conectada:** {fv_conectada_kva:.2f} kVA")
+    st.write(f"- **Nueva potencia a interconectar (Solicitud):** {potencia_nueva_kva:.2f} kVA")
+    st.write(f"- **Potencia Total Acumulada en Transformador:** {potencia_total_kva:.2f} kVA")
+
+    # Evaluación del límite del transformador
+    if potencia_total_kva > trafo_kva:
+        st.error(
+            f"⚠️ **RIESGO DE FLUJO INVERSO DETECTADO:** La potencia acumulada ({potencia_total_kva:.2f} kVA) "
+            f"supera la capacidad del transformador ({trafo_kva:.2f} kVA)."
+        )
+    else:
+        st.success(
+            f"✅ **SIN FLUJO INVERSO:** La potencia acumulada ({potencia_total_kva:.2f} kVA) está dentro del "
+            f"límite nominal del transformador ({trafo_kva:.2f} kVA)."
+        )
+
+    # Generación de la gráfica de Flujo Inverso Acumulado
+    fig_flujo = calc.generar_grafica_flujo_inverso(
+        trafo_kva=trafo_kva,
+        potencia_previa_kva=fv_conectada_kva,
+        potencia_nueva_kva=potencia_nueva_kva,
+    )
+    st.pyplot(fig_flujo)
+else:
+    st.info(
+        "ℹ️ No se evaluó el flujo inverso acumulado. Los cálculos y reportes se generarán considerando únicamente la potencia aparente de la solicitud actual."
     )
 
 # ==============================================================================
-# 7. EXPORTACIÓN DE REPORTES
+# 7. EXPORTACIÓN DE REPORTES (EXCEL Y PDF)
 # ==============================================================================
 st.divider()
-st.header("📥 Descargar Reportes")
+st.header("📥 Descargar Reportes Técnicos")
 
-col_d1, col_d2 = st.columns(2)
+col_ex, col_pdf = st.columns(2)
 
-with col_d1:
-  st.download_button(
-      label="📄 Descargar Estudio Completo en Excel (.xlsx)",
-      data=calc.generar_excel(res),
-      file_name=f"Estudio_Interconexion_{rpu}.xlsx",
-      mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  )
+with col_ex:
+    st.download_button(
+        label="📄 Descargar Estudio Completo en Excel (.xlsx)",
+        data=calc.generar_excel(res),
+        file_name=f"Estudio_Interconexion_{rpu}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
-with col_d2:
-  st.download_button(
-      label="📕 Descargar Reporte Completo en PDF (.pdf)",
-      data=calc.generar_pdf(res, normativa),
-      file_name=f"Reporte_Interconexion_{rpu}.pdf",
-      mime="application/pdf",
-  )
+import streamlit as st
+import calculos as calc
+
+# --- PANTALLA PRINCIPAL: RENDERIZAR LAS 3 GRÁFICAS ---
+st.subheader("Análisis de Potencia y Cargabilidad")
+
+# 1. Triángulo de Potencias
+fig_tri = calc.generar_grafica_triangulo(res)
+st.pyplot(fig_tri)
+
+# 3. Utilización del Sistema
+fig_pct = calc.generar_grafica_porcentaje_utilizacion(res)
+st.pyplot(fig_pct)
+
+# --- BOTÓN DE DESCARGA PDF ---
+pdf_bytes = calc.generar_pdf(res, normativa)
+
+st.download_button(
+    label="📄 Descargar Reporte Completo en PDF",
+    data=pdf_bytes,
+    file_name="Reporte_Estudio_Interconexion.pdf",
+    mime="application/pdf",
+)

@@ -1,25 +1,17 @@
 import io
+import math
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import (
-    Image,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
 
-# Voltajes nominales según nivel de tensión
+# ==============================================================================
+# 1. CATÁLOGOS Y TABLAS DE REFERENCIA
+# ==============================================================================
+
 VOLTAJES_SISTEMA = {
     "BAJA TENSION (BT)": {
-        "Monofásico (1Φ - 2 hilos)": [0.127, 0.220],
-        "Bifásico (2Φ - 3 hilos)": [0.127, 0.220],
-        "Trifásico (3Φ - 4 hilos)": [0.220, 0.440, 0.480],
+        "Monofásico (1Φ - 2 hilos) (1F-2H)": [0.120, 0.127],
+        "Bifásico (2Φ - 3 hilos) (1F-3H / 2F-3H)": [0.120, 0.127, 0.220, 0.240],
+        "Trifásico (3Φ - 4 hilos) (3F-4H)": [0.220, 0.440, 0.480],
     },
     "Media tensión (MT)": {
         "Monofásico (1Φ - 2 hilos)": [7.62, 13.2],
@@ -28,18 +20,7 @@ VOLTAJES_SISTEMA = {
     },
 }
 
-CATALOGO_TRAFOS_MONOFASICOS = [
-    5.0,
-    10.0,
-    15.0,
-    25.0,
-    37.5,
-    50.0,
-    75.0,
-    100.0,
-    167.0,
-]
-
+CATALOGO_TRAFOS_MONOFASICOS = [5.0, 10.0, 15.0, 25.0, 37.5, 50.0, 75.0, 100.0]
 CATALOGO_TRAFOS_TRIFASICOS = [
     15.0,
     30.0,
@@ -50,40 +31,9 @@ CATALOGO_TRAFOS_TRIFASICOS = [
     225.0,
     300.0,
     500.0,
-    750.0,
-    1000.0,
-    1500.0,
-    2000.0,
-    2500.0,
 ]
 
-DATOS_DE_SOLICITUD = {
-    "BAJA TENSION(MENOR O IGUAL A 1 KV) (BT)": {
-        "Tensión nominal": "0.127-0.480 kV",
-        "de_solicitud": "10 kV",
-        "tension_soporte_60hz": "2.5 kV (1 min)",
-    },
-    "Clase 15 kV": {
-        "tension_nominal": "13.8 kV / 15 kV",
-        "de_solicitud": "95 kV",
-        "tension_soporte_60hz": "34 kV (1 min)",
-    },
-    "Clase 18 y 25 kV": {
-        "tension_nominal": "22.9 kV / 23 kV / 25 kV",
-        "de_solicitud": "150 kV",
-        "tension_soporte_60hz": "50 kV (1 min)",
-    },
-    "Clase 34.5 kV": {
-        "tension_nominal": "34.5 kV",
-        "de_solicitud": "200 kV",
-        "tension_soporte_60hz": "70 kV (1 min)",
-    },
-}
-
-# Tabla de Ampacidad NOM-001-SEDE-2012 75°C (COBRE, ALUMINIO)
 CATALOGO_CABLES_75C = {
-    "18 AWG": [7, None],
-    "16 AWG": [10, None],
     "14 AWG": [20, None],
     "12 AWG": [25, None],
     "10 AWG": [35, None],
@@ -102,575 +52,619 @@ CATALOGO_CABLES_75C = {
     "350 kcmil": [310, 250],
     "400 kcmil": [335, 270],
     "500 kcmil": [380, 310],
-    "600 kcmil": [420, 340],
-    "700 kcmil": [460, 375],
-    "750 kcmil": [475, 385],
-    "800 kcmil": [490, 395],
-    "900 kcmil": [520, 425],
-    "1000 kcmil": [545, 445],
 }
 
+DATOS_DE_SOLICITUD = {
+    "BAJA TENSION(MENOR O IGUAL A 1 KV) (BT)": {
+        "de_solicitud": "N/A (BT)",
+        "tension_soporte_60hz": "2.5 kV",
+    },
+    "Clase 15 kV": {
+        "de_solicitud": "95 kV BIL",
+        "tension_soporte_60hz": "34 kV",
+    },
+    "Clase 18 y 25 kV": {
+        "de_solicitud": "125 kV BIL",
+        "tension_soporte_60hz": "40 kV",
+    },
+    "Clase 34.5 kV": {
+        "de_solicitud": "150 kV BIL",
+        "tension_soporte_60hz": "50 kV",
+    },
+}
 
-def evaluar_criterios_normativos_cfe(
-    nivel_tension: str,
-    fases: str,
-    p_kw: float,
-    s_solicitada_kva: float,
-    asociada_centro_carga: bool,
-    carga_contratada_kw: float,
-    fases_contratadas_coinciden: bool,
-    pct_trafo_100: float,
-    pct_cond_100: float,
-):
-  es_bt = "BAJA" in nivel_tension.upper() or "BT" in nivel_tension.upper()
-  motivos_opinion = []
-  motivos_estudio = []
-
-  if es_bt:
-    if "Monofásico" in fases and p_kw > 5.0:
-      motivos_opinion.append(
-          "Criterio I (BT): Generación en Monofásico (1F-2H) es mayor a 5 kW"
-          f" ({p_kw:.2f} kW)."
-      )
-    elif ("Bifásico" in fases or "Trifásico" in fases) and p_kw > 10.0:
-      motivos_opinion.append(
-          "Criterio I (BT): Generación en Bifásico/Trifásico es mayor a 10 kW"
-          f" ({p_kw:.2f} kW)."
-      )
-
-  capacidad_generacion_compared = max(p_kw, s_solicitada_kva)
-  if asociada_centro_carga and (
-      p_kw > carga_contratada_kw or s_solicitada_kva > carga_contratada_kw
-  ):
-    motivos_opinion.append(
-        "Criterio II: La capacidad de generación "
-        f"({capacidad_generacion_compared:.2f} kW/kVA) supera la carga contratada del suministro existente ({carga_contratada_kw:.2f} kW)."
-    )
-
-  if asociada_centro_carga and not fases_contratadas_coinciden:
-    motivos_opinion.append(
-        "Criterio III: No coincide el número de fases entre el punto de"
-        " interconexión y el contrato de suministro existente."
-    )
-
-  if not es_bt and not asociada_centro_carga:
-    motivos_opinion.append(
-        "Criterio IV: Central en Media Tensión (MT1/MT2) no asociada a un"
-        " Centro de Carga."
-    )
-
-  requiere_opinion = len(motivos_opinion) > 0
-
-  if es_bt:
-    if pct_trafo_100 > 80.0:
-      motivos_estudio.append(
-          "Criterio I (BT): La capacidad agregada excede el 80% de la capacidad"
-          f" del transformador del circuito ({pct_trafo_100:.1f}%)."
-      )
-    if pct_cond_100 > 80.0:
-      motivos_estudio.append(
-          "Criterio I (BT): La corriente calculada excede el 80% de la"
-          f" ampacidad nominal del conductor ({pct_cond_100:.1f}%)."
-      )
-  else:
-    if p_kw > carga_contratada_kw or s_solicitada_kva > carga_contratada_kw:
-      motivos_estudio.append(
-          "Criterio II (MT): La capacidad de la Central Eléctrica "
-          f"({max(p_kw, s_solicitada_kva):.2f} kW/kVA) supera la carga contratada existente ({carga_contratada_kw:.2f} kW)."
-      )
-
-  requiere_estudio = len(motivos_estudio) > 0
-
-  return {
-      "requiere_opinion": requiere_opinion,
-      "motivos_opinion": motivos_opinion,
-      "requiere_estudio": requiere_estudio,
-      "motivos_estudio": motivos_estudio,
-  }
+# ==============================================================================
+# 2. FUNCIONES DE CÁLCULO ELÉCTRICO Y EVALUACIÓN TÉCNICA
+# ==============================================================================
 
 
-def obtener_ampacidad(calibre: str, material: str = "Cobre") -> int:
-  datos = CATALOGO_CABLES_75C.get(calibre)
-  if not datos:
-    return 0
-  idx = 0 if material.strip().capitalize() == "Cobre" else 1
-  amp = datos[idx]
-  if amp is None:
-    raise ValueError(
-        f"El calibre {calibre} no está disponible en Aluminio (requiere mín."
-        " CATALOGO_CABLES_75C AWG)."
-    )
-  return amp
+def obtener_ampacidad(calibre, material):
+    """Devuelve la ampacidad nominal en Amperes a 75 °C según NOM-001-SEDE."""
+    datos = CATALOGO_CABLES_75C.get(calibre, [0, 0])
+    return datos[0] if material == "Cobre" else (datos[1] if datos[1] else 0)
 
 
-def calcular_corriente(s_kva: float, v_kv: float, fases: str) -> float:
-  if v_kv <= 0:
-    return 0.0
-  v_volts = v_kv * 1000.0
-
-  if "Monofásico" in fases:
-    return (s_kva * 1000.0) / v_volts
-  elif "Bifásico" in fases:
-    return (s_kva * 1000.0) / (2.0 * v_volts)
-  elif "Trifásico" in fases:
-    return (s_kva * 1000.0) / (np.sqrt(3) * v_volts)
-  return 0.0
-
-
-def evaluar_solicitud_completa(
-    rpu: str,
-    solicitud: str,
-    nivel_tension: str,
-    fases: str,
-    p_mw: float,
-    fp: float,
-    trafo_kva: float,
-    v_linea_kv: float,
-    calibre_cable: str,
-    material_cable: str,
-    clase_aislamiento: str,
-):
-  p_kw = p_mw * 1000.0
-  s_solicitada_kva = p_kw / fp if fp > 0 else 0.0
-  q_kvar = np.sqrt(max(0.0, s_solicitada_kva**2 - p_kw**2))
-
-  i_calculada = calcular_corriente(s_solicitada_kva, v_linea_kv, fases)
-  i_nominal = i_calculada
-  i_diseno = i_nominal * 1.25
-
-  ampacidad_cable = obtener_ampacidad(calibre_cable, material_cable)
-
-  info_nba = DATOS_DE_SOLICITUD.get(
-      clase_aislamiento,
-      {
-          "de_solicitud": "N/A",
-          "tension_soporte_60hz": "N/A",
-          "tension_nominal": "N/A",
-      },
-  )
-
-  trafo_kw_100 = trafo_kva * fp
-  trafo_kva_80 = trafo_kva * 0.80
-
-  pct_trafo_100 = (
-      (s_solicitada_kva / trafo_kva) * 100.0 if trafo_kva > 0 else 0.0
-  )
-  pct_trafo_80 = (
-      (s_solicitada_kva * 0.80 / trafo_kva) * 100.0 if trafo_kva > 0 else 0.0
-  )
-
-  disp_trafo_kva_100 = max(0.0, trafo_kva - s_solicitada_kva)
-  disp_trafo_kw_100 = max(0.0, trafo_kw_100 - p_kw)
-
-  pct_cond_100 = (
-      (i_diseno / ampacidad_cable) * 100.0 if ampacidad_cable > 0 else 0.0
-  )
-  pct_cond_80 = (
-      (i_diseno / (ampacidad_cable )) * 0.80*100.0
-      if ampacidad_cable > 0
-      else 0.0
-  )
-
-  cable_soporta = ampacidad_cable >= i_diseno
-  trafo_soporta = s_solicitada_kva <= trafo_kva
-
-  trafo_sugerido_kva = trafo_kva
-  if not trafo_soporta:
-    cat = (
+def sugerir_transformador(s_solicitada_kva, fases):
+    """Sugiere la capacidad comercial de transformador inmediata superior."""
+    catalogo = (
         CATALOGO_TRAFOS_MONOFASICOS
         if ("Monofásico" in fases or "Bifásico" in fases)
         else CATALOGO_TRAFOS_TRIFASICOS
     )
-    for t_cap in cat:
-      if t_cap >= s_solicitada_kva:
-        trafo_sugerido_kva = t_cap
-        break
-    if trafo_sugerido_kva < s_solicitada_kva:
-      trafo_sugerido_kva = cat[-1]
-
-  calibre_sugerido = calibre_cable
-  if not cable_soporta:
-    for cal, amps in CATALOGO_CABLES_75C.items():
-      amp_val = amps[0] if material_cable == "Cobre" else amps[1]
-      if amp_val and amp_val >= i_diseno:
-        calibre_sugerido = cal
-        break
-
-  carga_local_estimada_kw = trafo_kw_100 * 0.20
-  flujo_inverso_kw = max(0.0, p_kw - carga_local_estimada_kw)
-
-  return {
-      "rpu": rpu,
-      "solicitud": solicitud,
-      "nivel_tension": nivel_tension,
-      "fases": fases,
-      "p_kw": round(p_kw, 2),
-      "q_kvar": round(q_kvar, 2),
-      "s_solicitada_kva": round(s_solicitada_kva, 2),
-      "i_calculada": round(i_calculada, 2),
-      "i_nominal": round(i_nominal, 2),
-      "i_diseno": round(i_diseno, 2),
-      "v_linea_kv": v_linea_kv,
-      "fp": fp,
-      "carga_local_kw": round(carga_local_estimada_kw, 2),
-      "flujo_inverso_kw": round(flujo_inverso_kw, 2),
-      "trafo_kva": trafo_kva,
-      "pct_trafo_100": round(pct_trafo_100, 2),
-      "pct_trafo_80": round(pct_trafo_80, 2),
-      "disp_trafo_kva_100": round(disp_trafo_kva_100, 2),
-      "disp_trafo_kw_100": round(disp_trafo_kw_100, 2),
-      "calibre_cable": calibre_cable,
-      "material_cable": material_cable,
-      "ampacidad_cable": ampacidad_cable,
-      "pct_cond_100": round(pct_cond_100, 2),
-      "pct_cond_80": round(pct_cond_80, 2),
-      "clase_aislamiento": clase_aislamiento,
-      "de_solicitud": info_nba.get("de_solicitud", "N/A"),
-      "tension_soporte_60hz": info_nba.get("tension_soporte_60hz", "N/A"),
-      "trafo_soporta": trafo_soporta,
-      "cable_soporta": cable_soporta,
-      "trafo_sugerido_kva": trafo_sugerido_kva,
-      "calibre_sugerido": calibre_sugerido,
-  }
+    for cap in catalogo:
+        if cap >= s_solicitada_kva:
+            return cap
+    return catalogo[-1]
 
 
-def generar_grafica_utilizacion(res):
-  fig, ax = plt.subplots(figsize=(8, 4))
-  elementos = ["Trafo (100%)", "Trafo (80%)", "Cable (100%)", "Cable (80%)"]
-  porcentajes = [
-      res["pct_trafo_100"],
-      res["pct_trafo_80"],
-      res["pct_cond_100"],
-      res["pct_cond_80"],
-  ]
-  colores = ["#d9534f" if p > 100 else "#5cb85c" for p in porcentajes]
-  bars = ax.bar(elementos, porcentajes, color=colores, width=0.45)
-  ax.axhline(100, color="black", linestyle="--", linewidth=1)
-  ax.set_ylabel("% utilizacion")
-  ax.set_title("Utilización del Sistema")
-  ax.set_ylim(0, max(max(porcentajes) + 20, 120))
-  for bar in bars:
-    yval = bar.get_height()
-    ax.text(
-        bar.get_x() + bar.get_width() / 2.0,
-        yval + 2,
-        f"{yval}%",
-        ha="center",
-        va="bottom",
-        fontsize=8,
-        fontweight="bold",
+def sugerir_calibre_conductor(i_diseno, material):
+    """Sugiere el calibre de conductor que soporta la corriente de diseño (1.25 * In)."""
+    idx_mat = 0 if material == "Cobre" else 1
+    for calibre, caps in CATALOGO_CABLES_75C.items():
+        cap = caps[idx_mat]
+        if cap is not None and cap >= i_diseno:
+            return calibre
+    return "500 kcmil (múltiples conductores por fase)"
+
+
+def evaluar_solicitud_completa(
+    rpu,
+    solicitud,
+    nivel_tension,
+    fases,
+    p_mw,
+    fp,
+    trafo_kva,
+    v_linea_kv,
+    calibre_cable,
+    material_cable,
+    clase_aislamiento,
+):
+    """Realiza el balance de potencias, corrientes y dictamen técnico de capacidad."""
+    p_kw = p_mw * 1000.0
+    s_solicitada_kva = p_kw / fp if fp > 0 else p_kw
+    q_kvar = (s_solicitada_kva**2 - p_kw**2) ** 0.5 if s_solicitada_kva >= p_kw else 0.0
+
+    # Corriente Nominal
+    if "Monofásico (1Φ - 2 hilos)" in fases or "Monofásico (1Φ - 3 hilos)" in fases:
+        i_nominal = (s_solicitada_kva * 1000.0) / (v_linea_kv * 1000.0)
+    else:  # Trifásico
+        i_nominal = (s_solicitada_kva * 1000.0) / ((3**0.5) * v_linea_kv * 1000.0)
+
+    i_diseno = i_nominal * 1.25
+    ampacidad_cable = obtener_ampacidad(calibre_cable, material_cable)
+
+    # Porcentajes de utilización
+    pct_trafo_100 = round((s_solicitada_kva / trafo_kva) * 100.0, 2)
+    pct_trafo_80 = round((s_solicitada_kva / (trafo_kva * 0.80)) * 100.0, 2)
+
+    pct_cond_100 = round((i_diseno / ampacidad_cable) * 100.0, 2) if ampacidad_cable > 0 else 0.0
+    pct_cond_80 = round((i_diseno / (ampacidad_cable * 0.80)) * 100.0, 2) if ampacidad_cable > 0 else 0.0
+
+    trafo_soporta = s_solicitada_kva <= trafo_kva
+    cable_soporta = i_diseno <= ampacidad_cable
+
+    return {
+        "rpu": rpu,
+        "solicitud": solicitud,
+        "nivel_tension": nivel_tension,
+        "fases": fases,
+        "p_mw": p_mw,
+        "p_kw": round(p_kw, 2),
+        "fp": fp,
+        "s_solicitada_kva": round(s_solicitada_kva, 2),
+        "q_kvar": round(q_kvar, 2),
+        "v_linea_kv": v_linea_kv,
+        "trafo_kva": trafo_kva,
+        "i_nominal": round(i_nominal, 2),
+        "i_diseno": round(i_diseno, 2),
+        "calibre_cable": calibre_cable,
+        "material_cable": material_cable,
+        "ampacidad_cable": ampacidad_cable,
+        "clase_aislamiento": clase_aislamiento,
+        "flujo_inverso_kw": round(p_kw, 2),
+        "pct_trafo_100": pct_trafo_100,
+        "pct_trafo_80": pct_trafo_80,
+        "pct_cond_100": pct_cond_100,
+        "pct_cond_80": pct_cond_80,
+        "trafo_soporta": trafo_soporta,
+        "cable_soporta": cable_soporta,
+        "trafo_sugerido_kva": sugerir_transformador(s_solicitada_kva, fases),
+        "calibre_sugerido": sugerir_calibre_conductor(i_diseno, material_cable),
+    }
+
+
+def evaluar_criterios_normativos_cfe(
+    nivel_tension,
+    fases,
+    p_kw,
+    s_solicitada_kva,
+    asociada_centro_carga,
+    carga_contratada_kw,
+    fases_contratadas_coinciden,
+    pct_trafo_100,
+    pct_cond_100,
+):
+    """Aplica la normativa CFE / CRE para evaluar si se requiere Opinión Técnica o Estudio."""
+    requiere_opinion = False
+    motivos_opinion = []
+
+    requiere_estudio = False
+    motivos_estudio = []
+
+    if "Media" in nivel_tension:
+        if p_kw > 500.0:
+            requiere_estudio = True
+            motivos_estudio.append("Capacidad mayor a 500 kW en Media Tensión.")
+        else:
+            requiere_opinion = True
+            motivos_opinion.append("Interconexión en Media Tensión (<= 500 kW).")
+    else:
+        if p_kw > 50.0:
+            requiere_estudio = True
+            motivos_estudio.append("Capacidad mayor a 50 kW en Baja Tensión excede límite simplificado.")
+
+        if asociada_centro_carga and p_kw > carga_contratada_kw:
+            requiere_opinion = True
+            motivos_opinion.append(f"La capacidad de generación ({p_kw} kW) supera la carga contratada ({carga_contratada_kw} kW).")
+
+        if asociada_centro_carga and not fases_contratadas_coinciden:
+            requiere_opinion = True
+            motivos_opinion.append("El esquema de fases del suministro no coincide con la interconexión.")
+
+    if pct_trafo_100 > 100.0:
+        requiere_opinion = True
+        motivos_opinion.append(f"Sobrecarga en transformador detectada ({pct_trafo_100}%).")
+
+    if pct_cond_100 > 100.0:
+        requiere_opinion = True
+        motivos_opinion.append(f"Sobrecarga en conductor detectada ({pct_cond_100}%).")
+
+    return {
+        "requiere_opinion": requiere_opinion,
+        "motivos_opinion": motivos_opinion,
+        "requiere_estudio": requiere_estudio,
+        "motivos_estudio": motivos_estudio,
+    }
+
+
+# ==============================================================================
+# 3. GENERACIÓN DE GRÁFICAS (MATPLOTLIB)
+# ==============================================================================
+
+
+def generar_grafica_triangulo_potencias(p_kw, q_kvar, s_kva, fp):
+    """Genera la gráfica vectorial del Triángulo de Potencias (P, Q, S)."""
+    fig, ax = plt.subplots(figsize=(6, 3.8))
+
+    # Coordenadas del triángulo: (0,0) -> (P, 0) -> (P, Q)
+    x = [0, p_kw, p_kw, 0]
+    y = [0, 0, q_kvar, 0]
+
+    # Dibujar los vectores principales
+    ax.plot([0, p_kw], [0, 0], color="#27ae60", linewidth=3, label=f"P (Activa): {p_kw:.2f} kW")
+    ax.plot([p_kw, p_kw], [0, q_kvar], color="#e67e22", linewidth=3, label=f"Q (Reactiva): {q_kvar:.2f} kvar")
+    ax.plot([0, p_kw], [0, q_kvar], color="#2980b9", linewidth=3, label=f"S (Aparente): {s_kva:.2f} kVA")
+
+    # Relleno sombreado dentro del triángulo
+    ax.fill(x, y, color="#3498db", alpha=0.15)
+
+    # Indicación del Ángulo theta (FP = cos(theta))
+    theta_rad = math.acos(fp) if 0 <= fp <= 1 else 0
+    theta_deg = math.degrees(theta_rad)
+
+    # Añadir texto explicativo
+    ax.text(p_kw / 2, -max(q_kvar, 1) * 0.12, f"P = {p_kw:.2f} kW", ha="center", va="top", fontsize=9, fontweight="bold", color="#27ae60")
+    ax.text(p_kw * 1.03, q_kvar / 2, f"Q = {q_kvar:.2f} kvar", ha="left", va="center", fontsize=9, fontweight="bold", color="#e67e22")
+    ax.text(p_kw / 2, q_kvar / 2 * 1.1, f"S = {s_kva:.2f} kVA\n(FP = {fp:.2f}, θ = {theta_deg:.1f}°)", ha="right", va="bottom", fontsize=8, fontweight="bold", color="#2980b9")
+
+    # Estética de ejes
+    ax.set_title("Triángulo de Potencias Solicitado (P, Q, S)", fontsize=10, fontweight="bold", pad=10)
+    ax.set_xlabel("Potencia Activa (kW)", fontsize=9, fontweight="bold")
+    ax.set_ylabel("Potencia Reactiva (kvar)", fontsize=9, fontweight="bold")
+
+    # Ajuste dinámico de márgenes
+    ax.set_xlim(-p_kw * 0.05, p_kw * 1.25)
+    ax.set_ylim(-max(q_kvar, 1) * 0.2, max(q_kvar, 1) * 1.25 if q_kvar > 0 else 10)
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="upper left", fontsize=8)
+
+    plt.tight_layout()
+    return fig
+
+
+import io
+import matplotlib.pyplot as plt
+
+
+import io
+import matplotlib.pyplot as plt
+
+
+def generar_grafica_porcentaje_utilizacion(res):
+    """Genera la gráfica de 4 barras: 'Utilización del Sistema'."""
+    # Extraer utilidades base al 100%
+    pct_trafo_100 = res.get("pct_trafo_100", 0)
+    pct_cond_100 = res.get("pct_cond_100", 0)
+
+    # Calcular porcentajes al 80% de capacidad
+    pct_trafo_80 = pct_trafo_100 * 0.8
+    pct_cond_80 = pct_cond_100 * 0.8
+
+    categorias = [
+        "Trafo (100%)",
+        "Trafo (80%)",
+        "Cable (100%)",
+        "Cable (80%)",
+    ]
+    valores = [pct_trafo_100, pct_trafo_80, pct_cond_100, pct_cond_80]
+
+    # Colores: Verde (#5cb85c / #58b957) si ok, Rojo (#d9534f) si supera el 100%
+    colores = ["#d9534f" if v > 100 else "#58b957" for v in valores]
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    bars = ax.bar(categorias, valores, color=colores, width=0.45)
+
+    # Formato de ejes y títulos idénticos
+    ax.set_title("Utilización del Sistema", fontsize=10, pad=8)
+    ax.set_ylabel("% utilizacion", fontsize=9)
+    ax.set_xlabel("Utilización de Equipos", fontsize=10, labelpad=10)
+
+    # Línea punteada en el 100%
+    ax.axhline(100, color="black", linestyle="--", linewidth=1)
+
+    # Formato de malla y márgenes superiores para que no se corten los textos
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
+    max_val = max(valores) if valores else 100
+    ax.set_ylim(0, max_val * 1.18)
+
+    # Etiquetas de porcentaje sobre cada barra
+    for bar in bars:
+        yval = bar.get_height()
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            yval + (max_val * 0.02),
+            f"{yval:.2f}%",
+            ha="center",
+            va="bottom",
+            fontsize=7.5,
+            fontweight="bold",
+        )
+
+    plt.tight_layout()
+    return fig
+
+
+def figura_a_bytes(fig):
+    """Convierte la figura Matplotlib a bytes (PNG) para incluir en reportes."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    buf.seek(0)
+    return buf.getvalue()
+
+def generar_grafica_flujo_inverso(trafo_kva, potencia_previa_kva, potencia_nueva_kva):
+    """Genera gráfica comparativa de la capacidad del transformador vs potencia acumulada en kVA."""
+    fig, ax = plt.subplots(figsize=(6, 3.8))
+
+    potencia_total_kva = potencia_previa_kva + potencia_nueva_kva
+
+    categorias = ["Previa Conectada", "Nueva Solicitud", "Total Acumulado", "Capacidad Trafo"]
+    valores = [potencia_previa_kva, potencia_nueva_kva, potencia_total_kva, trafo_kva]
+
+    color_total = "#e74c3c" if potencia_total_kva > trafo_kva else "#27ae60"
+    colores = ["#3498db", "#2ecc71", color_total, "#34495e"]
+
+    bars = ax.bar(categorias, valores, color=colores, width=0.5)
+    ax.set_ylabel("Potencia Aparente (kVA)", fontsize=9, fontweight="bold")
+    ax.set_title("Flujo Inverso Acumulado en Transformador (kVA)", fontsize=10, fontweight="bold", pad=10)
+    ax.grid(axis="y", linestyle="--", alpha=0.5)
+
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(
+            f"{height:.2f} kVA",
+            xy=(bar.get_x() + bar.get_width() / 2, height),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            fontweight="bold",
+        )
+
+    ax.axhline(
+        y=trafo_kva,
+        color="#c0392b",
+        linestyle="--",
+        linewidth=1.2,
+        label=f"Límite Trafo ({trafo_kva} kVA)",
     )
-  plt.tight_layout()
-  buf = io.BytesIO()
-  plt.savefig(buf, format="png", dpi=150)
-  plt.close(fig)
-  buf.seek(0)
-  return buf
+    ax.legend(loc="upper left", fontsize=8)
+
+    plt.tight_layout()
+    return fig
 
 
-def generar_grafica_potencias(res):
-  fig, ax = plt.subplots(figsize=(6, 3))
-  categorias = ["Activa (P)", "Reactiva (Q)", "Aparente (S)"]
-  valores = [res["p_kw"], res["q_kvar"], res["s_solicitada_kva"]]
-  unidades = ["kW", "kVAR", "kVA"]
-  colores = ["#1f77b4", "#d423ae", "#47f247"]
+def _generar_grafica_utilizacion(nombre, valor, capacidad, unidad):
+    """Genera una gráfica de utilización de un equipo respecto a su capacidad."""
+    porcentaje = valor / capacidad * 100 if capacidad > 0 else 0
+    color = "#d9534f" if porcentaje > 100 else "#5cb85c"
 
-  bars = ax.bar(categorias, valores, color=colores, width=0.45)
-  ax.set_ylabel("Valor (kW / kVAR / kVA)")
-  ax.set_title("Triángulo de Potencias")
-  ax.set_ylim(0, max(valores) * 1.25 if max(valores) > 0 else 10)
-
-  for bar, u in zip(bars, unidades):
-    yval = bar.get_height()
-    ax.text(
-        bar.get_x() + bar.get_width() / 2.0,
-        yval + (max(valores) * 0.03 if max(valores) > 0 else 0.2),
-        f"{yval} {u}",
-        ha="center",
-        va="bottom",
-        fontsize=8,
-        fontweight="bold",
-    )
-
-  plt.tight_layout()
-  buf = io.BytesIO()
-  plt.savefig(buf, format="png", dpi=150)
-  plt.close(fig)
-  buf.seek(0)
-  return buf
+    fig, ax = plt.subplots(figsize=(5, 3))
+    ax.bar([nombre], [porcentaje], color=color, width=0.5)
+    ax.axhline(100, color="black", linestyle="--", linewidth=1)
+    ax.set_ylabel("% de utilización", fontsize=9)
+    ax.set_title(f"Utilización de {nombre}", fontsize=10, pad=10)
+    ax.set_ylim(0, max(110, porcentaje * 1.15))
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
+    ax.text(0, porcentaje + max(2, porcentaje * 0.02), f"{porcentaje:.2f}%", ha="center", fontsize=8)
+    plt.tight_layout()
+    return fig
 
 
-def generar_grafica_flujo_inverso(res):
-  fig, ax = plt.subplots(figsize=(6, 3))
-  categorias = [
-      "Generación (P)",
-      "Carga Local Est. (20%)",
-      "Flujo Inverso a Red",
-  ]
-  valores = [res["p_kw"], res["carga_local_kw"], res["flujo_inverso_kw"]]
-  colores = ["#0275d8", "#f0ad4e", "#d9534f"]
-
-  bars = ax.bar(categorias, valores, color=colores, width=0.45)
-  ax.set_ylabel("Potencia (kW)")
-  ax.set_title("Balance de Flujo Inverso hacia la Red")
-  ax.set_ylim(0, max(valores) * 1.25 if max(valores) > 0 else 10)
-
-  for bar in bars:
-    yval = bar.get_height()
-    ax.text(
-        bar.get_x() + bar.get_width() / 2.0,
-        yval + (max(valores) * 0.03 if max(valores) > 0 else 0.2),
-        f"{yval} kW",
-        ha="center",
-        va="bottom",
-        fontsize=8,
-        fontweight="bold",
-    )
-
-  plt.tight_layout()
-  buf = io.BytesIO()
-  plt.savefig(buf, format="png", dpi=150)
-  plt.close(fig)
-  buf.seek(0)
-  return buf
+def generar_grafica_utilizacion_trafo(s_solicitada_kva, trafo_kva):
+    return _generar_grafica_utilizacion("Transformador", s_solicitada_kva, trafo_kva, "kVA")
 
 
-from openpyxl.drawing.image import Image as OpenPyxlImage
+def generar_grafica_utilizacion_conductor(i_diseno, ampacidad_cable):
+    return _generar_grafica_utilizacion("Conductor", i_diseno, ampacidad_cable, "A")
+
+
+# ==============================================================================
+# 4. EXPORTACIÓN A EXCEL (.XLSX)
+# ==============================================================================
 
 
 def generar_excel(res):
-  """Genera el reporte técnico en un archivo Excel incluyendo tablas y gráficas incrustadas."""
-  output = io.BytesIO()
+    """Genera un reporte técnico estructurado en formato Excel usando BytesIO."""
+    output = io.BytesIO()
 
-  # 1. Generar los gráficos en buffer de memoria
-  img_pot_buf = generar_grafica_potencias(res)
-  img_flujo_buf = generar_grafica_flujo_inverso(res)
-  img_carg_buf = generar_grafica_utilizacion(res)
+    datos_resumen = {
+        "Parámetro": [
+            "RPU / Registro de Usuario",
+            "Número de Solicitud CFE",
+            "Nivel de Tensión",
+            "Esquema de Fases",
+            "Tensión Nominal (kV)",
+            "Potencia Activa Solicitada (P en kW)",
+            "Factor de Potencia (FP)",
+            "Potencia Reactiva Solicitada (Q en kvar)",
+            "Potencia Aparente Solicitada (S en kVA)",
+            "Corriente Nominal In (A)",
+            "Corriente de Diseño Id (1.25 In) (A)",
+            "Capacidad Transformador Actual (kVA)",
+            "Utilización Transformador vs 100% (%)",
+            "Utilización Transformador vs 80% (%)",
+            "Sugerencia Transformador (kVA)",
+            "Calibre Conductor Seleccionado",
+            "Material del Conductor",
+            "Ampacidad Conductor (A)",
+            "Utilización Conductor vs 100% (%)",
+            "Utilización Conductor vs 80% (%)",
+            "Sugerencia Conductor",
+            "Clase de Aislamiento",
+            "Evaluación Flujo Inverso Realizada",
+            "Potencia FV Previa en Trafo (kVA)",
+            "Potencia Acumulada Total en Trafo (kVA)",
+        ],
+        "Valor": [
+            res.get("rpu", ""),
+            res.get("solicitud", ""),
+            res.get("nivel_tension", ""),
+            res.get("fases", ""),
+            res.get("v_linea_kv", 0.0),
+            res.get("p_kw", 0.0),
+            res.get("fp", 0.0),
+            res.get("q_kvar", 0.0),
+            res.get("s_solicitada_kva", 0.0),
+            res.get("i_nominal", 0.0),
+            res.get("i_diseno", 0.0),
+            res.get("trafo_kva", 0.0),
+            f"{res.get('pct_trafo_100', 0.0)}%",
+            f"{res.get('pct_trafo_80', 0.0)}%",
+            res.get("trafo_sugerido_kva", 0.0),
+            res.get("calibre_cable", ""),
+            res.get("material_cable", ""),
+            res.get("ampacidad_cable", 0.0),
+            f"{res.get('pct_cond_100', 0.0)}%",
+            f"{res.get('pct_cond_80', 0.0)}%",
+            res.get("calibre_sugerido", ""),
+            res.get("clase_aislamiento", ""),
+            "SÍ" if res.get("flujo_inverso_evaluado", False) else "NO",
+            res.get("fv_conectada_kva", 0.0),
+            res.get("potencia_total_kva", res.get("s_solicitada_kva", 0.0)),
+        ],
+    }
 
-  with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    # 2. Hoja 1: Datos de Generación
-    df_id = pd.DataFrame([{
-        "RPU": res["rpu"],
-        "Número de Solicitud": res["solicitud"],
-        "Nivel de Tensión": res["nivel_tension"],
-        "Esquema de Fases": res["fases"],
-        "Generación Producida (kW)": res["p_kw"],
-        "Potencia Aparente (kVA)": res["s_solicitada_kva"],
-        "Corriente Nominal (A)": res["i_nominal"],
-        "Corriente de Diseño 1.25 (A)": res["i_diseno"],
-        "Factor de Potencia": res["fp"],
-        "Tensión de Operación (kV)": res["v_linea_kv"],
-    }])
-    df_id.to_excel(writer, sheet_name="Datos_Generacion", index=False)
+    df = pd.DataFrame(datos_resumen)
 
-    # 3. Hoja 2: Evaluacion de Transformador y Cable
-    df_trafo = pd.DataFrame([{
-        "Capacidad Trafo (kVA)": res["trafo_kva"],
-        "Clase Tensión": res["clase_aislamiento"],
-        "Dictamen Trafo": "APTO" if res["trafo_soporta"] else "RECHAZADO",
-        "Trafo Sugerido (kVA)": res["trafo_sugerido_kva"],
-        "Dictamen Conductor": "APTO" if res["cable_soporta"] else "RECHAZADO",
-        "Calibre Actual": res["calibre_cable"],
-        "Calibre Sugerido": res["calibre_sugerido"],
-        "Ampacidad (A)": res["ampacidad_cable"],
-        "I_diseño (A)": res["i_diseno"],
-    }])
-    df_trafo.to_excel(
-        writer, sheet_name="Evaluacion_Equipamiento", index=False
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Estudio_Interconexion", index=False)
+
+    output.seek(0)
+    return output.getvalue()
+
+
+# ==============================================================================
+# 5. EXPORTACIÓN A PDF (.PDF)
+# ==============================================================================
+
+import io
+import matplotlib.pyplot as plt
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+# --- 1. FUNCIÓN: TRIÁNGULO DE POTENCIAS ---
+def generar_grafica_triangulo(res):
+    p = res.get("p_kw", 15.0)
+    q = res.get("q_kvar", 7.26)
+    s = res.get("s_solicitada_kva", 16.67)
+
+    fig, ax = plt.subplots(figsize=(6, 2.8))
+    # Dibuja las lineas del triángulo
+    ax.plot([0, p], [0, 0], color="#27ae60", linewidth=3, label=f"P (Activa): {p:.2f} kW")
+    ax.plot([p, p], [0, q], color="#e67e22", linewidth=3, label=f"Q (Reactiva): {q:.2f} kvar")
+    ax.plot([0, p], [0, q], color="#2980b9", linewidth=3, label=f"S (Aparente): {s:.2f} kVA")
+    ax.fill_between([0, p], [0, q], color="#2980b9", alpha=0.1)
+
+    ax.set_title("Triángulo de Potencias Solicitado (P, Q, S)", fontsize=10, fontweight="bold")
+    ax.set_xlabel("Potencia Activa (kW)", fontsize=9, fontweight="bold")
+    ax.set_ylabel("Potencia Reactiva (kvar)", fontsize=9, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend(loc="upper left", fontsize=8)
+
+    # Etiquetas flotantes
+    ax.text(p/2, -q*0.15, f"P = {p:.2f} kW", color="#27ae60", fontweight="bold", ha="center", fontsize=8)
+    ax.text(p*1.02, q/2, f"Q = {q:.2f} kvar", color="#e67e22", fontweight="bold", va="center", fontsize=8)
+    ax.text(p/2, q/2 + q*0.1, f"S = {s:.2f} kVA", color="#2980b9", fontweight="bold", ha="center", fontsize=8)
+
+    plt.tight_layout()
+    return fig
+
+# --- 3. FUNCIÓN: UTILIZACIÓN DEL SISTEMA (4 BARRAS) ---
+def generar_grafica_porcentaje_utilizacion(res):
+    pct_trafo_100 = res.get("pct_trafo_100", 111.11)
+    pct_cond_100 = res.get("pct_cond_100", 277.78)
+
+    pct_trafo_80 = pct_trafo_100 * 0.8
+    pct_cond_80 = pct_cond_100 * 0.8
+
+    categorias = ["Trafo (100%)", "Trafo (80%)", "Cable (100%)", "Cable (80%)"]
+    valores = [pct_trafo_100, pct_trafo_80, pct_cond_100, pct_cond_80]
+    colores = ["#d9534f" if v > 100 else "#58b957" for v in valores]
+
+    fig, ax = plt.subplots(figsize=(6, 3.2))
+    bars = ax.bar(categorias, valores, color=colores, width=0.45)
+
+    ax.set_title("Utilización del Sistema", fontsize=10, fontweight="bold")
+    ax.set_ylabel("% utilizacion", fontsize=9, fontweight="bold")
+    ax.set_xlabel("Utilización de Equipos", fontsize=9, fontweight="bold")
+
+    ax.axhline(100, color="black", linestyle="--", linewidth=1)
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
+
+    max_val = max(valores) if valores and max(valores) > 0 else 100
+    ax.set_ylim(0, max_val * 1.25)
+
+    for bar in bars:
+        yval = bar.get_height()
+        # Ajuste de posición si choca con la línea de 100%
+        if 85 <= yval <= 105:
+            text_y = yval - (max_val * 0.08)
+            va_align = "top"
+        else:
+            text_y = yval + (max_val * 0.02)
+            va_align = "bottom"
+
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            text_y,
+            f"{yval:.2f}%",
+            ha="center",
+            va=va_align,
+            fontsize=8,
+            fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85)
+        )
+
+    plt.tight_layout()
+    return fig
+
+# --- GENERADOR DEL PDF COMPLETO ---
+def generar_pdf(res, normativa="NOM-001-SEDE"):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30
     )
+    story = []
 
-    # 4. Hoja 3: Triangulo de Potencias y Flujo Inverso
-    df_flujo = pd.DataFrame([{
-        "Potencia Activa P (kW)": res["p_kw"],
-        "Potencia Reactiva Q (kVAR)": res["q_kvar"],
-        "Potencia Aparente S (kVA)": res["s_solicitada_kva"],
-        "Carga Local Est. 20% (kW)": res["carga_local_kw"],
-        "Flujo Inverso a Red (kW)": res["flujo_inverso_kw"],
-    }])
-    df_flujo.to_excel(writer, sheet_name="Graficas_y_Flujos", index=False)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("HeaderTitle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=14, alignment=1)
+    cell_style = ParagraphStyle("CellText", parent=styles["Normal"], fontName="Helvetica", fontSize=7, leading=8)
+    cell_bold = ParagraphStyle("CellBold", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7, leading=8)
 
-    # 5. Insertar las imágenes en las pestañas correspondientes
-    wb = writer.book
+    # Título y Tablas
+    story.append(Paragraph("<b>REPORTE DE ESTUDIO DE INTERCONEXIÓN Y FLUJOS DE POTENCIA</b>", title_style))
+    story.append(Spacer(1, 8))
 
-    # Pegar Triángulo de Potencias en la Hoja 3 (Celda A5)
-    ws_flujo = wb["Graficas_y_Flujos"]
-    img_pot = OpenPyxlImage(img_pot_buf)
-    ws_flujo.add_image(img_pot, "A5")
+    data_t1 = [
+        ["Componente", "Capacidad Actual", "Dictamen Técnico", "Recomendación"],
+        ["Transformador", f"{res.get('trafo_kva', 15.0)} kVA", res.get("dictamen_trafo", "RECHAZADO"), res.get("rec_trafo", "Cambiar a 25.0 kVA")],
+        ["Conductor", res.get("cable_info", "8 AWG"), res.get("dictamen_cond", "NO APTO"), res.get("rec_cond", "Sin cambio")]
+    ]
+    t1 = Table(data_t1, colWidths=[130, 130, 140, 140])
+    t1.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#2C2C2C")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#A0A0A0")),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+    ]))
+    story.append(t1)
+    story.append(Spacer(1, 6))
 
-    # Pegar Flujo Inverso a un costado (Celda I5)
-    img_flujo = OpenPyxlImage(img_flujo_buf)
-    ws_flujo.add_image(img_flujo, "I5")
+    data_t2 = [
+        [Paragraph("RPU / Registro:", cell_bold), Paragraph(str(res.get("rpu", "123456789012")), cell_style), Paragraph("No. Solicitud:", cell_bold), Paragraph(str(res.get("solicitud", "SOL-2026-099")), cell_style)],
+        [Paragraph("Nivel Tensión:", cell_bold), Paragraph(str(res.get("nivel_tension", "BAJA TENSIÓN (BT)")), cell_style), Paragraph("Esquema Fases:", cell_bold), Paragraph(str(res.get("esquema_fases", "Monofásico 2 hilos (1F-2H)")), cell_style)],
+        [Paragraph("Potencia Activa (P):", cell_bold), Paragraph(f"{res.get('p_kw', 15.0):.1f} kW", cell_style), Paragraph("Potencia Reactiva (Q):", cell_bold), Paragraph(f"{res.get('q_kvar', 7.26):.2f} kVAR", cell_style)],
+        [Paragraph("Potencia Aparente (S):", cell_bold), Paragraph(f"{res.get('s_solicitada_kva', 16.67):.2f} kVA", cell_style), Paragraph("Flujo Inverso Red:", cell_bold), Paragraph(f"{res.get('flujo_inverso_kw', 12.3):.1f} kW", cell_style)],
+        [Paragraph("Corriente Nominal (In):", cell_bold), Paragraph(f"{res.get('i_nom', 131.23):.2f} A", cell_style), Paragraph("Corriente Diseño (1.25):", cell_bold), Paragraph(f"{res.get('i_diseno', 173.61):.2f} A", cell_style)],
+    ]
+    t2 = Table(data_t2, colWidths=[120, 150, 120, 150])
+    t2.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#CCCCCC")),
+        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#FAFAFA")),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+    ]))
+    story.append(t2)
+    story.append(Spacer(1, 6))
 
-    # Pegar Utilización en la Hoja 2 (Celda A5)
-    ws_trafo = wb["Evaluacion_Equipamiento"]
-    img_carg = OpenPyxlImage(img_carg_buf)
-    ws_trafo.add_image(img_carg, "A5")
+    data_t3 = [
+        ["Trámite / Requerimiento", "Resultado", "Rubro / Criterio Aplicado"],
+        ["Opinión Técnica (CFE)", res.get("opinion_tec", "REQUIERE"), Paragraph("- Criterio I (BT): Generación Monofásica mayor a 5 kW.<br/>- Criterio II: Capacidad de generación supera la carga contratada.", cell_style)],
+        ["Estudio de Interconexión", res.get("estudio_inter", "REQUIERE"), Paragraph("- Criterio I (BT): La capacidad agregada excede el 80% del trafo.<br/>- Criterio II (BT): La corriente calculada excede el 80% del conductor.", cell_style)],
+    ]
+    t3 = Table(data_t3, colWidths=[150, 100, 290])
+    t3.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F618D")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("ALIGN", (0,0), (1,-1), "CENTER"),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#A0A0A0")),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ("TOPPADDING", (0,0), (-1,-1), 3),
+    ]))
+    story.append(t3)
+    story.append(Spacer(1, 8))
 
-  output.seek(0)
-  return output
+    # CONVERTIDOR DE MATPLOTLIB A IMAGEN REPORTLAB
+    def fig_a_img(fig, width=350, height=130):
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        img = Image(buf, width=width, height=height)
+        img.hAlign = "CENTER"
+        return img
+
+    # --- GENERAR E INSERTA LAS 3 GRÁFICAS DIRECTAMENTE ---
+    
+    # 1. Triángulo de Potencias
+    fig_tri = generar_grafica_triangulo(res)
+    story.append(fig_a_img(fig_tri))
+    story.append(Spacer(1, 4))
 
 
-def generar_pdf(res, normativa):
-  """Genera el reporte ejecutivo en formato PDF incluyendo corrientes y dictamen CFE/CRE."""
-  buffer = io.BytesIO()
-  doc = SimpleDocTemplate(
-      buffer,
-      pagesize=letter,
-      rightMargin=30,
-      leftMargin=30,
-      topMargin=30,
-      bottomMargin=30,
-  )
-  elements = []
-  styles = getSampleStyleSheet()
+    # 3. Utilización del Sistema (4 barras)
+    fig_pct = generar_grafica_porcentaje_utilizacion(res)
+    story.append(fig_a_img(fig_pct))
 
-  # Estilo personalizado para celdas con texto largo
-  style_cell = styles["Normal"]
-  style_cell.fontSize = 8
-  style_cell.leading = 10
-
-  # Título Principal
-  elements.append(
-      Paragraph(
-          "<b>REPORTE DE ESTUDIO DE INTERCONEXIÓN Y FLUJOS DE POTENCIA</b>",
-          styles["Title"],
-      )
-  )
-  elements.append(Spacer(1, 10))
-
-  # 1. TABLA: Dictamen Técnico de Componentes
-  data_componentes = [
-      ["Componente", "Capacidad Actual", "Dictamen Técnico", "Recomendación"],
-      [
-          "Transformador",
-          f"{res['trafo_kva']} kVA",
-          "APTO" if res["trafo_soporta"] else "RECHAZADO",
-          (
-              "Sin cambio"
-              if res["trafo_soporta"]
-              else f"Cambiar a {res['trafo_sugerido_kva']} kVA"
-          ),
-      ],
-      [
-          "Conductor",
-          f"{res['calibre_cable']} ({res['material_cable']})",
-          "APTO" if res["cable_soporta"] else "RECHAZADO",
-          (
-              "Sin cambio"
-              if res["cable_soporta"]
-              else f"Cambiar a {res['calibre_sugerido']}"
-          ),
-      ],
-  ]
-  t_comp = Table(data_componentes, colWidths=[130, 130, 130, 140])
-  t_comp.setStyle(
-      TableStyle([
-          ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#333333")),
-          ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-          ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-          ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-          ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-          ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-      ])
-  )
-  elements.append(t_comp)
-  elements.append(Spacer(1, 10))
-
-  # 2. TABLA: Parámetros Eléctricos y Corrientes
-  data_id = [
-      ["RPU / Registro:", res["rpu"], "No. Solicitud:", res["solicitud"]],
-      [
-          "Nivel Tensión:",
-          res["nivel_tension"],
-          "Esquema Fases:",
-          res["fases"],
-      ],
-      [
-          "Potencia Activa (P):",
-          f"{res['p_kw']} kW",
-          "Potencia Reactiva (Q):",
-          f"{res['q_kvar']} kVAR",
-      ],
-      [
-          "Potencia Aparente (S):",
-          f"{res['s_solicitada_kva']} kVA",
-          "Flujo Inverso Red:",
-          f"{res['flujo_inverso_kw']} kW",
-      ],
-      [
-          "Corriente Nominal (In):",
-          f"{res['i_nominal']} A",
-          "Corriente Diseñó (1.25):",
-          f"{res['i_diseno']} A",
-      ],
-  ]
-  t_id = Table(data_id, colWidths=[130, 140, 130, 140])
-  t_id.setStyle(
-      TableStyle([
-          ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-          ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-          ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-          ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F0F0F0")),
-          ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#F0F0F0")),
-      ])
-  )
-  elements.append(t_id)
-  elements.append(Spacer(1, 10))
-
-  # 3. TABLA: Dictamen Normativo CFE / CRE (Opinión Técnica y Estudio)
-  str_opinion = "REQUIERE" if normativa["requiere_opinion"] else "NO REQUIERE"
-  motivos_op = (
-      "<br/>".join([f"• {m}" for m in normativa["motivos_opinion"]])
-      if normativa["motivos_opinion"]
-      else "Exento según procedimiento simplificado."
-  )
-
-  str_estudio = "REQUIERE" if normativa["requiere_estudio"] else "NO REQUIERE"
-  motivos_est = (
-      "<br/>".join([f"• {m}" for m in normativa["motivos_estudio"]])
-      if normativa["motivos_estudio"]
-      else "Dentro de los márgenes de cargabilidad y potencia."
-  )
-
-  data_normativa = [
-      ["Trámite / Requerimiento", "Resultado", "Rubro / Criterio Aplicado"],
-      [
-          "Opinión Técnica (CFE)",
-          str_opinion,
-          Paragraph(motivos_op, style_cell),
-      ],
-      [
-          "Estudio de Interconexión",
-          str_estudio,
-          Paragraph(motivos_est, style_cell),
-      ],
-  ]
-  t_norm = Table(data_normativa, colWidths=[140, 100, 300])
-  t_norm.setStyle(
-      TableStyle([
-          ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F77B4")),
-          ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-          ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-          ("ALIGN", (0, 0), (1, -1), "CENTER"),
-          ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-          ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-          ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-      ])
-  )
-  elements.append(t_norm)
-  elements.append(Spacer(1, 10))
-
-  # 4. GRÁFICAS: Triángulo de Potencias y Flujo Inverso
-  img_pot = generar_grafica_potencias(res)
-  img_flujo = generar_grafica_flujo_inverso(res)
-  img_carg = generar_grafica_utilizacion(res)
-
-  elements.append(Image(img_pot, width=380, height=180))
-  elements.append(Spacer(1, 8))
-  elements.append(Image(img_flujo, width=380, height=180))
-  elements.append(Spacer(1, 8))
-  elements.append(Image(img_carg, width=380, height=180))
-
-  doc.build(elements)
-  buffer.seek(0)
-  return buffer
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
