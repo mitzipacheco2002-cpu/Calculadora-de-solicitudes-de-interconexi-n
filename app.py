@@ -418,9 +418,3 @@ with col_foot1:
     st.markdown("**Creado por:** Mitzi Pacheco Martinez")
     st.markdown("Herramienta desarrollada para el estudio de capacidad de alojamiento y análisis de interconexión en redes de distribución.")
 
-with col_foot2:
-    # Puedes usar la URL directa de la imagen del logo de tu universidad
-    # Reemplaza la URL de abajo por el enlace directo al logo de tu institución
-    url_logo = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Escudo-BUAP-lineal.png/600px-Escudo-BUAP-lineal.png"
-    
-   st.image("logo_universidad.png", width=150)
