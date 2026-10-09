@@ -1,7 +1,15 @@
 import io
 import math
-import matplotlib.pyplot as plt
-import pandas as pd
+
+try:
+    import matplotlib.pyplot as plt  # pyright: ignore[reportMissingModuleSource]
+except ImportError:  # pragma: no cover
+    plt = None
+
+try:
+    import pandas as pd  # pyright: ignore[reportMissingModuleSource]
+except ImportError:  # pragma: no cover
+    pd = None
 
 # ==============================================================================
 # 1. CATÁLOGOS Y TABLAS DE REFERENCIA
@@ -273,16 +281,8 @@ def generar_grafica_triangulo_potencias(p_kw, q_kvar, s_kva, fp):
     return fig
 
 
-import io
-import matplotlib.pyplot as plt
-
-
-import io
-import matplotlib.pyplot as plt
-
-
-def generar_grafica_porcentaje_utilizacion(res):
-    """Genera la gráfica de 4 barras: 'Utilización del Sistema'."""
+def generar_grafica_Hosting_Capacity(res):
+    """Genera la gráfica de 4 barras: 'Hosting Capacity'."""
     # Extraer utilidades base al 100%
     pct_trafo_100 = res.get("pct_trafo_100", 0)
     pct_cond_100 = res.get("pct_cond_100", 0)
@@ -306,7 +306,7 @@ def generar_grafica_porcentaje_utilizacion(res):
     bars = ax.bar(categorias, valores, color=colores, width=0.45)
 
     # Formato de ejes y títulos idénticos
-    ax.set_title("Utilización del Sistema", fontsize=10, pad=8)
+    ax.set_title("Hosting Capacity", fontsize=10, pad=8)
     ax.set_ylabel("% utilizacion", fontsize=9)
     ax.set_xlabel("Utilización de Equipos", fontsize=10, labelpad=10)
 
@@ -385,7 +385,7 @@ def generar_grafica_flujo_inverso(trafo_kva, potencia_previa_kva, potencia_nueva
     return fig
 
 
-def _generar_grafica_utilizacion(nombre, valor, capacidad, unidad):
+def _generar_grafica_Hosting_Capacity(nombre, valor, capacidad, unidad):
     """Genera una gráfica de utilización de un equipo respecto a su capacidad."""
     porcentaje = valor / capacidad * 100 if capacidad > 0 else 0
     color = "#d9534f" if porcentaje > 100 else "#5cb85c"
@@ -402,12 +402,12 @@ def _generar_grafica_utilizacion(nombre, valor, capacidad, unidad):
     return fig
 
 
-def generar_grafica_utilizacion_trafo(s_solicitada_kva, trafo_kva):
-    return _generar_grafica_utilizacion("Transformador", s_solicitada_kva, trafo_kva, "kVA")
+def generar_grafica_Hosting_Capacity_trafo(s_solicitada_kva, trafo_kva):
+    return _generar_grafica_Hosting_Capacity("Transformador", s_solicitada_kva, trafo_kva, "kVA")
 
 
-def generar_grafica_utilizacion_conductor(i_diseno, ampacidad_cable):
-    return _generar_grafica_utilizacion("Conductor", i_diseno, ampacidad_cable, "A")
+def generar_grafica_Hosting_Capacity_conductor(i_diseno, ampacidad_cable):
+    return _generar_grafica_Hosting_Capacity("Conductor", i_diseno, ampacidad_cable, "A")
 
 
 # ==============================================================================
@@ -476,10 +476,25 @@ def generar_excel(res):
         ],
     }
 
-    df = pd.DataFrame(datos_resumen)
+    if pd is not None:
+        df = pd.DataFrame(datos_resumen)
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Estudio_Interconexion", index=False)
+    else:
+        try:
+            from openpyxl import Workbook  # pyright: ignore[reportMissingModuleSource]
+        except ImportError as exc:
+            raise RuntimeError("Para exportar Excel, instala 'pandas' o 'openpyxl'.") from exc
 
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, sheet_name="Estudio_Interconexion", index=False)
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Estudio_Interconexion"
+        ws.append(["Parámetro", "Valor"])
+
+        for parametro, valor in zip(datos_resumen["Parámetro"], datos_resumen["Valor"]):
+            ws.append([parametro, valor])
+
+        wb.save(output)
 
     output.seek(0)
     return output.getvalue()
@@ -490,11 +505,19 @@ def generar_excel(res):
 # ==============================================================================
 
 import io
-import matplotlib.pyplot as plt
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+try:
+    import matplotlib.pyplot as plt  # type: ignore[reportMissingModuleSource]
+except ModuleNotFoundError as exc:
+    raise RuntimeError("Para exportar PDF y generar gráficas, instala 'matplotlib'.") from exc
+
+try:
+    from reportlab.lib import colors  # type: ignore[reportMissingModuleSource]
+    from reportlab.lib.pagesizes import letter  # type: ignore[reportMissingModuleSource]
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[reportMissingModuleSource]
+    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle  # type: ignore[reportMissingModuleSource]
+except ModuleNotFoundError as exc:
+    raise RuntimeError("Para exportar PDF, instala 'reportlab'.") from exc
 
 # --- 1. FUNCIÓN: TRIÁNGULO DE POTENCIAS ---
 def generar_grafica_triangulo(res):

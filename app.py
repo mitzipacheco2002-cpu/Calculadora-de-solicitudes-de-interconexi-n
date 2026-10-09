@@ -1,5 +1,4 @@
 import importlib
-import streamlit as st
 import calculos as calc
 
 try:
@@ -79,7 +78,7 @@ else:
 # ==============================================================================
 # 2. SECCIÓN PRINCIPAL: EQUIPAMIENTO ADAPTATIVO
 # ==============================================================================
-st.title("⚡ Calculadora y Evaluación de Interconexión CFE / CRE")
+st.title("⚡ Calculadora de Solicitudes y Estudio de Interconexión de centrales electricas de Generación Distribuida  CFE ")
 
 col1, col2 = st.columns(2)
 
@@ -293,15 +292,15 @@ with col_g1:
     st.pyplot(fig_tri)
 
 with col_g2:
-    st.subheader("📊 Utilización del Sistema")
-    fig_trafo = calc.generar_grafica_porcentaje_utilizacion(res)
+    st.subheader("📊 Hosting Capacity")
+    fig_trafo = calc.generar_grafica_Hosting_Capacity_trafo(res["s_solicitada_kva"], res["trafo_kva"])
     st.pyplot(fig_trafo)
 
 # 1. Llamada a la gráfica individual del trafo (pasando los valores del diccionario)
 img_bytes_trafo = calc.figura_a_bytes(fig_trafo)
 
 # 2. Llamada a la gráfica global de porcentajes de utilización (4 barras)
-fig_pct = calc.generar_grafica_porcentaje_utilizacion(res)
+fig_pct = calc.generar_grafica_Hosting_Capacity(res)
 st.pyplot(fig_pct)
 
 
@@ -383,29 +382,15 @@ with col_ex:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-import streamlit as st
-import calculos as calc
+with col_pdf:
+    pdf_bytes = calc.generar_pdf(res, normativa)
+    st.download_button(
+        label="📄 Descargar Reporte Completo en PDF",
+        data=pdf_bytes,
+        file_name="Reporte_Estudio_Interconexion.pdf",
+        mime="application/pdf",
+    )
 
-# --- PANTALLA PRINCIPAL: RENDERIZAR LAS 3 GRÁFICAS ---
-st.subheader("Análisis de Potencia y Cargabilidad")
-
-# 1. Triángulo de Potencias
-fig_tri = calc.generar_grafica_triangulo(res)
-st.pyplot(fig_tri)
-
-# 3. Utilización del Sistema
-fig_pct = calc.generar_grafica_porcentaje_utilizacion(res)
-st.pyplot(fig_pct)
-
-# --- BOTÓN DE DESCARGA PDF ---
-pdf_bytes = calc.generar_pdf(res, normativa)
-
-st.download_button(
-    label="📄 Descargar Reporte Completo en PDF",
-    data=pdf_bytes,
-    file_name="Reporte_Estudio_Interconexion.pdf",
-    mime="application/pdf",
-)
 # ==============================================================================
 # 8. PIE DE PÁGINA (CRÉDITOS Y LOGOTIPO)
 # ==============================================================================
@@ -416,5 +401,6 @@ col_foot1, col_foot2 = st.columns([3, 1])
 with col_foot1:
     st.markdown("### 🛠️ Desarrollo del Proyecto")
     st.markdown("**Creado por:** Mitzi Pacheco Martinez")
-    st.markdown("Herramienta desarrollada para el estudio de capacidad de alojamiento y análisis de interconexión en redes de distribución.")
-
+    st.markdown(
+        "Herramienta desarrollada para el estudio de capacidad de alojamiento y análisis de interconexión en redes de distribución."
+    )
