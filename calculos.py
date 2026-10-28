@@ -556,6 +556,98 @@ def generar_excel(res):
 # ==============================================================================
 
 # --- GENERADOR DEL PDF COMPLETO ---
+import io
+
+try:
+    import matplotlib.pyplot as plt  # type: ignore[reportMissingModuleSource]
+except ModuleNotFoundError as exc:
+    raise RuntimeError("Para exportar PDF y generar gráficas, instala 'matplotlib'.") from exc
+
+try:
+    from reportlab.lib import colors  # type: ignore[reportMissingModuleSource]
+    from reportlab.lib.pagesizes import letter  # type: ignore[reportMissingModuleSource]
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[reportMissingModuleSource]
+    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle  # type: ignore[reportMissingModuleSource]
+except ModuleNotFoundError as exc:
+    raise RuntimeError("Para exportar PDF, instala 'reportlab'.") from exc
+
+# --- 1. FUNCIÓN: TRIÁNGULO DE POTENCIAS ---
+def generar_grafica_triangulo(res):
+    p = res.get("p_kw", 15.0)
+    q = res.get("q_kvar", 7.26)
+    s = res.get("s_solicitada_kva", 16.67)
+
+    fig, ax = plt.subplots(figsize=(6, 2.8))
+    # Dibuja las lineas del triángulo
+    ax.plot([0, p], [0, 0], color="#27ae60", linewidth=3, label=f"P (Activa): {p:.2f} kW")
+    ax.plot([p, p], [0, q], color="#e67e22", linewidth=3, label=f"Q (Reactiva): {q:.2f} kvar")
+    ax.plot([0, p], [0, q], color="#2980b9", linewidth=3, label=f"S (Aparente): {s:.2f} kVA")
+    ax.fill_between([0, p], [0, q], color="#2980b9", alpha=0.1)
+
+    ax.set_title("Triángulo de Potencias Solicitado (P, Q, S)", fontsize=10, fontweight="bold")
+    ax.set_xlabel("Potencia Activa (kW)", fontsize=9, fontweight="bold")
+    ax.set_ylabel("Potencia Reactiva (kvar)", fontsize=9, fontweight="bold")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend(loc="upper left", fontsize=8)
+
+    # Etiquetas flotantes
+    ax.text(p/2, -q*0.15, f"P = {p:.2f} kW", color="#27ae60", fontweight="bold", ha="center", fontsize=8)
+    ax.text(p*1.02, q/2, f"Q = {q:.2f} kvar", color="#e67e22", fontweight="bold", va="center", fontsize=8)
+    ax.text(p/2, q/2 + q*0.1, f"S = {s:.2f} kVA", color="#2980b9", fontweight="bold", ha="center", fontsize=8)
+
+    plt.tight_layout()
+    return fig
+
+# --- 3. FUNCIÓN: UTILIZACIÓN DEL SISTEMA (4 BARRAS) ---
+def generar_grafica_porcentaje_utilizacion(res):
+    pct_trafo_100 = res.get("pct_trafo_100", 111.11)
+    pct_cond_100 = res.get("pct_cond_100", 277.78)
+
+    pct_trafo_80 = pct_trafo_100 * 0.8
+    pct_cond_80 = pct_cond_100 * 0.8
+
+    categorias = ["Trafo (100%)", "Trafo (80%)", "Cable (100%)", "Cable (80%)"]
+    valores = [pct_trafo_100, pct_trafo_80, pct_cond_100, pct_cond_80]
+    colores = ["#d9534f" if v > 100 else "#58b957" for v in valores]
+
+    fig, ax = plt.subplots(figsize=(6, 3.2))
+    bars = ax.bar(categorias, valores, color=colores, width=0.45)
+
+    ax.set_title("Utilización del Sistema", fontsize=10, fontweight="bold")
+    ax.set_ylabel("% utilizacion", fontsize=9, fontweight="bold")
+    ax.set_xlabel("Utilización de Equipos", fontsize=9, fontweight="bold")
+
+    ax.axhline(100, color="black", linestyle="--", linewidth=1)
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
+
+    max_val = max(valores) if valores and max(valores) > 0 else 100
+    ax.set_ylim(0, max_val * 1.25)
+
+    for bar in bars:
+        yval = bar.get_height()
+        # Ajuste de posición si choca con la línea de 100%
+        if 85 <= yval <= 105:
+            text_y = yval - (max_val * 0.08)
+            va_align = "top"
+        else:
+            text_y = yval + (max_val * 0.02)
+            va_align = "bottom"
+
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            text_y,
+            f"{yval:.2f}%",
+            ha="center",
+            va=va_align,
+            fontsize=8,
+            fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85)
+        )
+
+    plt.tight_layout()
+    return fig
+
+# --- GENERADOR DEL PDF COMPLETO ---
 def generar_pdf(res, normativa="NOM-001-SEDE"):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -648,9 +740,6 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
     fig_pct = generar_grafica_porcentaje_utilizacion(res)
     story.append(fig_a_img(fig_pct))
 
-    doc.build(story)
-    buffer.seek(0)
-    return buffer.getvalue()
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
