@@ -193,18 +193,7 @@ def evaluar_criterios_normativos_cfe(
     pct_trafo_100,
     pct_cond_100,
 ):
-    """Aplica la normativa CFE / CRE para evaluar si se requiere Opinión Técnica o Estudio de Interconexión.
-    
-    Criterios de Opinión Técnica:
-      I. BT nueva con P > 5 kW (Monofásico 1F-2H) ó P > 10 kW (Bifásico/Trifásico 2F-3H / 3F-4H).
-      II. Asociada a Centro de Carga con P > Carga Contratada.
-      III. Asociada a Centro de Carga donde no coincide el número de fases.
-      IV. Central en MT (MT1/MT2) NO asociada a Centro de Carga.
-
-    Criterios de Estudio de Interconexión:
-      I. BT: Capacidad agregada excede el 80% del transformador o el 80% de ampacidad de conductores.
-      II. MT: Capacidad de generación supera la carga contratada en el contrato existente.
-    """
+    """Aplica la normativa CFE / CRE para evaluar si se requiere Opinión Técnica o Estudio de Interconexión."""
     requiere_opinion = False
     motivos_opinion = []
 
@@ -227,7 +216,6 @@ def evaluar_criterios_normativos_cfe(
                     f"Criterio I (BT Monofásico 1F-2H): Capacidad de generación ({p_kw:.2f} kW) es mayor a 5 kW."
                 )
         else:
-            # Bifásico (2F-3H) o Trifásico (3F-4H)
             if p_kw > 10.0:
                 requiere_opinion = True
                 motivos_opinion.append(
@@ -256,11 +244,11 @@ def evaluar_criterios_normativos_cfe(
         )
 
     # ==========================================================================
-    # EVALUACIÓN DE ESTUDIO DE INTERCONEXIÓN
+    # EVALUACIÓN DE ESTUDIO DE INTERCONEXIÓN (SEPARADO POR NIVEL DE TENSIÓN)
     # ==========================================================================
 
-    # Criterio I (BT): Excede el 80% del transformador o el 80% de ampacidad del conductor
     if es_bt:
+        # Criterio I (BT): Excede el 80% del transformador o el 80% de ampacidad del conductor
         if pct_trafo_100 > 80.0:
             requiere_estudio = True
             motivos_estudio.append(
@@ -271,13 +259,14 @@ def evaluar_criterios_normativos_cfe(
             motivos_estudio.append(
                 f"Criterio I (BT): La corriente de diseño excede el 80% de la ampacidad del conductor ({pct_cond_100:.2f}%)."
             )
-
-    # Criterio II (MT): Generación supera la carga contratada en suministro existente
-    if es_mt and asociada_centro_carga and p_kw > carga_contratada_kw:
-        requiere_estudio = True
-        motivos_estudio.append(
-            f"Criterio II (MT): La capacidad de generación ({p_kw:.2f} kW) supera la carga contratada ({carga_contratada_kw:.2f} kW)."
-        )
+            
+    elif es_mt:
+        # Criterio II (MT): Generación supera la carga contratada en suministro existente
+        if asociada_centro_carga and p_kw > carga_contratada_kw:
+            requiere_estudio = True
+            motivos_estudio.append(
+                f"Criterio II (MT): La capacidad de generación ({p_kw:.2f} kW) supera la carga contratada ({carga_contratada_kw:.2f} kW) en Media Tensión."
+            )
 
     return {
         "requiere_opinion": requiere_opinion,
@@ -285,7 +274,6 @@ def evaluar_criterios_normativos_cfe(
         "requiere_estudio": requiere_estudio,
         "motivos_estudio": motivos_estudio,
     }
-
 
 # ==============================================================================
 # 3. GENERACIÓN DE GRÁFICAS (MATPLOTLIB)
