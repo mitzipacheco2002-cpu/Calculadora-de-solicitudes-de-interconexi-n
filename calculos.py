@@ -193,40 +193,91 @@ def evaluar_criterios_normativos_cfe(
     pct_trafo_100,
     pct_cond_100,
 ):
-    """Aplica la normativa CFE / CRE para evaluar si se requiere Opinión Técnica o Estudio."""
+    """Aplica la normativa CFE / CRE para evaluar si se requiere Opinión Técnica o Estudio de Interconexión.
+    
+    Criterios de Opinión Técnica:
+      I. BT nueva con P > 5 kW (Monofásico 1F-2H) ó P > 10 kW (Bifásico/Trifásico 2F-3H / 3F-4H).
+      II. Asociada a Centro de Carga con P > Carga Contratada.
+      III. Asociada a Centro de Carga donde no coincide el número de fases.
+      IV. Central en MT (MT1/MT2) NO asociada a Centro de Carga.
+
+    Criterios de Estudio de Interconexión:
+      I. BT: Capacidad agregada excede el 80% del transformador o el 80% de ampacidad de conductores.
+      II. MT: Capacidad de generación supera la carga contratada en el contrato existente.
+    """
     requiere_opinion = False
     motivos_opinion = []
 
     requiere_estudio = False
     motivos_estudio = []
 
-    if "Media" in nivel_tension:
-        if p_kw > 500.0:
-            requiere_estudio = True
-            motivos_estudio.append("Capacidad mayor a 500 kW en Media Tensión.")
+    es_bt = "BAJA" in nivel_tension.upper() or "BT" in nivel_tension.upper()
+    es_mt = "MEDIA" in nivel_tension.upper() or "MT" in nivel_tension.upper()
+
+    # ==========================================================================
+    # EVALUACIÓN DE OPINIÓN TÉCNICA
+    # ==========================================================================
+
+    # Criterio I: BT nueva con P > 5 kW (1F-2H) ó P > 10 kW (2F-3H / 3F-4H)
+    if es_bt:
+        if "1F-2H" in fases or "Monofásico (1Φ - 2 hilos)" in fases:
+            if p_kw > 5.0:
+                requiere_opinion = True
+                motivos_opinion.append(
+                    f"Criterio I (BT Monofásico 1F-2H): Capacidad de generación ({p_kw:.2f} kW) es mayor a 5 kW."
+                )
         else:
-            requiere_opinion = True
-            motivos_opinion.append("Interconexión en Media Tensión (<= 500 kW).")
-    else:
-        if p_kw > 50.0:
+            # Bifásico (2F-3H) o Trifásico (3F-4H)
+            if p_kw > 10.0:
+                requiere_opinion = True
+                motivos_opinion.append(
+                    f"Criterio I (BT Bifásico/Trifásico): Capacidad de generación ({p_kw:.2f} kW) es mayor a 10 kW."
+                )
+
+    # Criterio II: Asociada a Centro de Carga y Generación > Carga Contratada
+    if asociada_centro_carga and p_kw > carga_contratada_kw:
+        requiere_opinion = True
+        motivos_opinion.append(
+            f"Criterio II: La capacidad de generación ({p_kw:.2f} kW) supera la carga contratada ({carga_contratada_kw:.2f} kW)."
+        )
+
+    # Criterio III: Asociada a Centro de Carga y no coinciden las fases
+    if asociada_centro_carga and not fases_contratadas_coinciden:
+        requiere_opinion = True
+        motivos_opinion.append(
+            "Criterio III: El número de fases del suministro existente no coincide con el punto de interconexión."
+        )
+
+    # Criterio IV: Esquemas en MT no asociados a Centro de Carga
+    if es_mt and not asociada_centro_carga:
+        requiere_opinion = True
+        motivos_opinion.append(
+            "Criterio IV: Central Eléctrica en Media Tensión (MT) no asociada a un Centro de Carga."
+        )
+
+    # ==========================================================================
+    # EVALUACIÓN DE ESTUDIO DE INTERCONEXIÓN
+    # ==========================================================================
+
+    # Criterio I (BT): Excede el 80% del transformador o el 80% de ampacidad del conductor
+    if es_bt:
+        if pct_trafo_100 > 80.0:
             requiere_estudio = True
-            motivos_estudio.append("Capacidad mayor a 50 kW en Baja Tensión excede límite simplificado.")
+            motivos_estudio.append(
+                f"Criterio I (BT): La capacidad cargada en el transformador ({pct_trafo_100:.2f}%) excede el 80% de su capacidad nominal."
+            )
+        if pct_cond_100 > 80.0:
+            requiere_estudio = True
+            motivos_estudio.append(
+                f"Criterio I (BT): La corriente de diseño excede el 80% de la ampacidad del conductor ({pct_cond_100:.2f}%)."
+            )
 
-        if asociada_centro_carga and p_kw > carga_contratada_kw:
-            requiere_opinion = True
-            motivos_opinion.append(f"La capacidad de generación ({p_kw} kW) supera la carga contratada ({carga_contratada_kw} kW).")
-
-        if asociada_centro_carga and not fases_contratadas_coinciden:
-            requiere_opinion = True
-            motivos_opinion.append("El esquema de fases del suministro no coincide con la interconexión.")
-
-    if pct_trafo_100 > 100.0:
-        requiere_opinion = True
-        motivos_opinion.append(f"Sobrecarga en transformador detectada ({pct_trafo_100}%).")
-
-    if pct_cond_100 > 100.0:
-        requiere_opinion = True
-        motivos_opinion.append(f"Sobrecarga en conductor detectada ({pct_cond_100}%).")
+    # Criterio II (MT): Generación supera la carga contratada en suministro existente
+    if es_mt and asociada_centro_carga and p_kw > carga_contratada_kw:
+        requiere_estudio = True
+        motivos_estudio.append(
+            f"Criterio II (MT): La capacidad de generación ({p_kw:.2f} kW) supera la carga contratada ({carga_contratada_kw:.2f} kW)."
+        )
 
     return {
         "requiere_opinion": requiere_opinion,
@@ -504,97 +555,6 @@ def generar_excel(res):
 # 5. EXPORTACIÓN A PDF (.PDF)
 # ==============================================================================
 
-import io
-
-try:
-    import matplotlib.pyplot as plt  # type: ignore[reportMissingModuleSource]
-except ModuleNotFoundError as exc:
-    raise RuntimeError("Para exportar PDF y generar gráficas, instala 'matplotlib'.") from exc
-
-try:
-    from reportlab.lib import colors  # type: ignore[reportMissingModuleSource]
-    from reportlab.lib.pagesizes import letter  # type: ignore[reportMissingModuleSource]
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # type: ignore[reportMissingModuleSource]
-    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle  # type: ignore[reportMissingModuleSource]
-except ModuleNotFoundError as exc:
-    raise RuntimeError("Para exportar PDF, instala 'reportlab'.") from exc
-
-# --- 1. FUNCIÓN: TRIÁNGULO DE POTENCIAS ---
-def generar_grafica_triangulo(res):
-    p = res.get("p_kw", 15.0)
-    q = res.get("q_kvar", 7.26)
-    s = res.get("s_solicitada_kva", 16.67)
-
-    fig, ax = plt.subplots(figsize=(6, 2.8))
-    # Dibuja las lineas del triángulo
-    ax.plot([0, p], [0, 0], color="#27ae60", linewidth=3, label=f"P (Activa): {p:.2f} kW")
-    ax.plot([p, p], [0, q], color="#e67e22", linewidth=3, label=f"Q (Reactiva): {q:.2f} kvar")
-    ax.plot([0, p], [0, q], color="#2980b9", linewidth=3, label=f"S (Aparente): {s:.2f} kVA")
-    ax.fill_between([0, p], [0, q], color="#2980b9", alpha=0.1)
-
-    ax.set_title("Triángulo de Potencias Solicitado (P, Q, S)", fontsize=10, fontweight="bold")
-    ax.set_xlabel("Potencia Activa (kW)", fontsize=9, fontweight="bold")
-    ax.set_ylabel("Potencia Reactiva (kvar)", fontsize=9, fontweight="bold")
-    ax.grid(True, linestyle="--", alpha=0.4)
-    ax.legend(loc="upper left", fontsize=8)
-
-    # Etiquetas flotantes
-    ax.text(p/2, -q*0.15, f"P = {p:.2f} kW", color="#27ae60", fontweight="bold", ha="center", fontsize=8)
-    ax.text(p*1.02, q/2, f"Q = {q:.2f} kvar", color="#e67e22", fontweight="bold", va="center", fontsize=8)
-    ax.text(p/2, q/2 + q*0.1, f"S = {s:.2f} kVA", color="#2980b9", fontweight="bold", ha="center", fontsize=8)
-
-    plt.tight_layout()
-    return fig
-
-# --- 3. FUNCIÓN: UTILIZACIÓN DEL SISTEMA (4 BARRAS) ---
-def generar_grafica_porcentaje_utilizacion(res):
-    pct_trafo_100 = res.get("pct_trafo_100", 111.11)
-    pct_cond_100 = res.get("pct_cond_100", 277.78)
-
-    pct_trafo_80 = pct_trafo_100 * 0.8
-    pct_cond_80 = pct_cond_100 * 0.8
-
-    categorias = ["Trafo (100%)", "Trafo (80%)", "Cable (100%)", "Cable (80%)"]
-    valores = [pct_trafo_100, pct_trafo_80, pct_cond_100, pct_cond_80]
-    colores = ["#d9534f" if v > 100 else "#58b957" for v in valores]
-
-    fig, ax = plt.subplots(figsize=(6, 3.2))
-    bars = ax.bar(categorias, valores, color=colores, width=0.45)
-
-    ax.set_title("Utilización del Sistema", fontsize=10, fontweight="bold")
-    ax.set_ylabel("% utilizacion", fontsize=9, fontweight="bold")
-    ax.set_xlabel("Utilización de Equipos", fontsize=9, fontweight="bold")
-
-    ax.axhline(100, color="black", linestyle="--", linewidth=1)
-    ax.grid(axis="y", linestyle="--", alpha=0.3)
-
-    max_val = max(valores) if valores and max(valores) > 0 else 100
-    ax.set_ylim(0, max_val * 1.25)
-
-    for bar in bars:
-        yval = bar.get_height()
-        # Ajuste de posición si choca con la línea de 100%
-        if 85 <= yval <= 105:
-            text_y = yval - (max_val * 0.08)
-            va_align = "top"
-        else:
-            text_y = yval + (max_val * 0.02)
-            va_align = "bottom"
-
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            text_y,
-            f"{yval:.2f}%",
-            ha="center",
-            va=va_align,
-            fontsize=8,
-            fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85)
-        )
-
-    plt.tight_layout()
-    return fig
-
 # --- GENERADOR DEL PDF COMPLETO ---
 def generar_pdf(res, normativa="NOM-001-SEDE"):
     buffer = io.BytesIO()
@@ -612,10 +572,17 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
     story.append(Paragraph("<b>REPORTE DE ESTUDIO DE INTERCONEXIÓN Y FLUJOS DE POTENCIA</b>", title_style))
     story.append(Spacer(1, 8))
 
+    # Definir dictámenes de transformador y conductor para la primera tabla
+    dictamen_trafo_str = "APTO" if res.get("trafo_soporta") else "RECHAZADO"
+    rec_trafo_str = "Sin cambio" if res.get("trafo_soporta") else f"Cambiar a {res.get('trafo_sugerido_kva')} kVA"
+    
+    dictamen_cond_str = "APTO" if res.get("cable_soporta") else "NO APTO"
+    rec_cond_str = "Sin cambio" if res.get("cable_soporta") else f"Cambiar a {res.get('calibre_sugerido')}"
+
     data_t1 = [
         ["Componente", "Capacidad Actual", "Dictamen Técnico", "Recomendación"],
-        ["Transformador", f"{res.get('trafo_kva', 15.0)} kVA", res.get("dictamen_trafo", "RECHAZADO"), res.get("rec_trafo", "Cambiar a 25.0 kVA")],
-        ["Conductor", res.get("cable_info", "8 AWG"), res.get("dictamen_cond", "NO APTO"), res.get("rec_cond", "Sin cambio")]
+        ["Transformador", f"{res.get('trafo_kva', 15.0)} kVA", dictamen_trafo_str, rec_trafo_str],
+        ["Conductor", f"{res.get('calibre_cable')} ({res.get('material_cable')})", dictamen_cond_str, rec_cond_str]
     ]
     t1 = Table(data_t1, colWidths=[130, 130, 140, 140])
     t1.setStyle(TableStyle([
@@ -632,10 +599,10 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
 
     data_t2 = [
         [Paragraph("RPU / Registro:", cell_bold), Paragraph(str(res.get("rpu", "123456789012")), cell_style), Paragraph("No. Solicitud:", cell_bold), Paragraph(str(res.get("solicitud", "SOL-2026-099")), cell_style)],
-        [Paragraph("Nivel Tensión:", cell_bold), Paragraph(str(res.get("nivel_tension", "BAJA TENSIÓN (BT)")), cell_style), Paragraph("Esquema Fases:", cell_bold), Paragraph(str(res.get("esquema_fases", "Monofásico 2 hilos (1F-2H)")), cell_style)],
-        [Paragraph("Potencia Activa (P):", cell_bold), Paragraph(f"{res.get('p_kw', 15.0):.1f} kW", cell_style), Paragraph("Potencia Reactiva (Q):", cell_bold), Paragraph(f"{res.get('q_kvar', 7.26):.2f} kVAR", cell_style)],
-        [Paragraph("Potencia Aparente (S):", cell_bold), Paragraph(f"{res.get('s_solicitada_kva', 16.67):.2f} kVA", cell_style), Paragraph("Flujo Inverso Red:", cell_bold), Paragraph(f"{res.get('flujo_inverso_kw', 12.3):.1f} kW", cell_style)],
-        [Paragraph("Corriente Nominal (In):", cell_bold), Paragraph(f"{res.get('i_nom', 131.23):.2f} A", cell_style), Paragraph("Corriente Diseño (1.25):", cell_bold), Paragraph(f"{res.get('i_diseno', 173.61):.2f} A", cell_style)],
+        [Paragraph("Nivel Tensión:", cell_bold), Paragraph(str(res.get("nivel_tension", "BAJA TENSIÓN (BT)")), cell_style), Paragraph("Esquema Fases:", cell_bold), Paragraph(str(res.get("fases", "")), cell_style)],
+        [Paragraph("Potencia Activa (P):", cell_bold), Paragraph(f"{res.get('p_kw', 0.0):.1f} kW", cell_style), Paragraph("Potencia Reactiva (Q):", cell_bold), Paragraph(f"{res.get('q_kvar', 0.0):.2f} kVAR", cell_style)],
+        [Paragraph("Potencia Aparente (S):", cell_bold), Paragraph(f"{res.get('s_solicitada_kva', 0.0):.2f} kVA", cell_style), Paragraph("Flujo Inverso Red:", cell_bold), Paragraph(f"{res.get('flujo_inverso_kw', 0.0):.1f} kW", cell_style)],
+        [Paragraph("Corriente Nominal (In):", cell_bold), Paragraph(f"{res.get('i_nominal', 0.0):.2f} A", cell_bold), Paragraph("Corriente Diseño (1.25):", cell_bold), Paragraph(f"{res.get('i_diseno', 0.0):.2f} A", cell_style)],
     ]
     t2 = Table(data_t2, colWidths=[120, 150, 120, 150])
     t2.setStyle(TableStyle([
@@ -647,10 +614,25 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
     story.append(t2)
     story.append(Spacer(1, 6))
 
+    # Formatear motivos dinámicos para la tabla normada en PDF
+    op_texto = "REQUIERE" if normativa.get("requiere_opinion") else "NO REQUIERE"
+    motivos_op_list = normativa.get("motivos_opinion", [])
+    if motivos_op_list:
+        html_op = "<br/>".join([f"• {m}" for m in motivos_op_list])
+    else:
+        html_op = "• Cumple con las exenciones del procedimiento técnico."
+
+    est_texto = "REQUIERE" if normativa.get("requiere_estudio") else "NO REQUIERE"
+    motivos_est_list = normativa.get("motivos_estudio", [])
+    if motivos_est_list:
+        html_est = "<br/>".join([f"• {m}" for m in motivos_est_list])
+    else:
+        html_est = "• El proyecto califica para el procedimiento simplificado."
+
     data_t3 = [
         ["Trámite / Requerimiento", "Resultado", "Rubro / Criterio Aplicado"],
-        ["Opinión Técnica (CFE)", res.get("opinion_tec", "REQUIERE"), Paragraph("- Criterio I (BT): Generación Monofásica mayor a 5 kW.<br/>- Criterio II: Capacidad de generación supera la carga contratada.", cell_style)],
-        ["Estudio de Interconexión", res.get("estudio_inter", "REQUIERE"), Paragraph("- Criterio I (BT): La capacidad agregada excede el 80% del trafo.<br/>- Criterio II (BT): La corriente calculada excede el 80% del conductor.", cell_style)],
+        ["Opinión Técnica (CFE)", op_texto, Paragraph(html_op, cell_style)],
+        ["Estudio de Interconexión", est_texto, Paragraph(html_est, cell_style)],
     ]
     t3 = Table(data_t3, colWidths=[150, 100, 290])
     t3.setStyle(TableStyle([
@@ -676,15 +658,11 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
         img.hAlign = "CENTER"
         return img
 
-    # --- GENERAR E INSERTA LAS 3 GRÁFICAS DIRECTAMENTE ---
-    
-    # 1. Triángulo de Potencias
+    # --- GENERAR E INSERTA LAS GRÁFICAS ---
     fig_tri = generar_grafica_triangulo(res)
     story.append(fig_a_img(fig_tri))
     story.append(Spacer(1, 4))
 
-
-    # 3. Utilización del Sistema (4 barras)
     fig_pct = generar_grafica_porcentaje_utilizacion(res)
     story.append(fig_a_img(fig_pct))
 
