@@ -558,7 +558,7 @@ def generar_excel(res):
 # --- GENERADOR DEL PDF COMPLETO ---
 def generar_pdf(res, normativa="NOM-001-SEDE"):
     buffer = io.BytesIO()
-    doc = (res, normativa(
+    doc = SimpleDocTemplate(
         buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30
     )
     story = []
