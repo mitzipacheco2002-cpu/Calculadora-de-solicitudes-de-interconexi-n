@@ -383,7 +383,7 @@ with col_ex:
     )
 
 with col_pdf:
-    pdf_bytes = calc.generar_pdf(SimpleDocTemplate)
+    pdf_bytes = calc.generar_pdf(res, normativa)
     st.download_button(
         label="📄 Descargar Reporte Completo en PDF",
         data=pdf_bytes,
