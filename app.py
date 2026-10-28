@@ -403,4 +403,3 @@ with col_foot1:
     st.markdown("**Creado por:** Mitzi Pacheco Martinez")
     st.markdown(
         "Herramienta desarrollada para el estudio de capacidad de alojamiento y análisis de interconexión en redes de distribución."
-    )
