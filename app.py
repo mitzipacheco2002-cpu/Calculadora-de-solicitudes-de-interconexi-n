@@ -377,7 +377,7 @@ col_ex, col_pdf = st.columns(2)
 with col_ex:
     st.download_button(
         label="📄 Descargar Estudio Completo en Excel (.xlsx)",
-        data=calc.generar_excel(res),
+        data=calc.generar_excel(res, normativa),  # <-- Se agregó 'normativa' aquí
         file_name=f"Estudio_Interconexion_{rpu}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
@@ -387,7 +387,7 @@ with col_pdf:
     st.download_button(
         label="📄 Descargar Reporte Completo en PDF",
         data=pdf_bytes,
-        file_name="Reporte_Estudio_Interconexion.pdf",
+        file_name=f"Reporte_Estudio_Interconexion_{rpu}.pdf",  # Opcional: le añadí el RPU al nombre para identificarlo mejor
         mime="application/pdf",
     )
 
