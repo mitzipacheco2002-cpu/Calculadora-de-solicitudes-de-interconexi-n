@@ -696,7 +696,7 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
         [Paragraph("Nivel Tensión:", cell_bold), Paragraph(str(res.get("nivel_tension", "BAJA TENSIÓN (BT)")), cell_style), Paragraph("Esquema Fases:", cell_bold), Paragraph(str(res.get("fases", "")), cell_style)],
         [Paragraph("Potencia Activa (P):", cell_bold), Paragraph(f"{res.get('p_kw', 15.0):.1f} kW", cell_style), Paragraph("Potencia Reactiva (Q):", cell_bold), Paragraph(f"{res.get('q_kvar', 7.26):.2f} kVAR", cell_style)],
         [Paragraph("Potencia Aparente (S):", cell_bold), Paragraph(f"{res.get('s_solicitada_kva', 16.67):.2f} kVA", cell_style), Paragraph("Flujo Inverso Red:", cell_bold), Paragraph(f"{res.get('flujo_inverso_kw', 0.0):.1f} kW", cell_style)],
-        [Paragraph("Corriente Nominal (In):", cell_bold), Paragraph(f"{res.get('i_nominal', 0.0):.2f} A", cell_bold), Paragraph("Corriente Diseño (1.25):", cell_bold), Paragraph(f"{res.get('i_diseno', 0.0):.2f} A", cell_style)],
+        [Paragraph("Corriente Nominal (In):", cell_bold), Paragraph(f"{res.get('i_nominal', 0.0):.2f} A", cell_bold), Paragraph("Corriente de seguridad (1.25):", cell_bold), Paragraph(f"{res.get('i_diseno', 0.0):.2f} A", cell_style)],
     ]
     t2 = Table(data_t2, colWidths=[120, 150, 120, 150])
     t2.setStyle(TableStyle([
