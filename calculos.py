@@ -666,21 +666,6 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
     story.append(Paragraph("<b>REPORTE DE ESTUDIO DE INTERCONEXIÓN Y FLUJOS DE POTENCIA</b>", title_style))
     story.append(Spacer(1, 5))
 
-    data_sub = [
-        [Paragraph("Subestación CFE:", cell_bold), Paragraph(str(res.get("subestacion", "Puebla 2000")), cell_style), 
-         Paragraph("Circuito:", cell_bold), Paragraph(str(res.get("circuito", "PUE-4110")), cell_style),
-         Paragraph("Zona CFE:", cell_bold), Paragraph(str(res.get("zona_cfe", "Puebla Poniente")), cell_style)]
-    ]
-    t_sub = Table(data_sub, colWidths=[85, 115, 55, 95, 60, 130])
-    t_sub.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#A0A0A0")),
-        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#EBF5FB")),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
-        ("TOPPADDING", (0,0), (-1,-1), 2),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-    ]))
-    story.append(t_sub)
-    story.append(Spacer(1, 5))
 
     dictamen_trafo_str = "APTO" if res.get("trafo_soporta", True) else "RECHAZADO"
     rec_trafo_str = "Sin cambio" if res.get("trafo_soporta", True) else f"Cambiar a {res.get('trafo_sugerido_kva')} kVA"
