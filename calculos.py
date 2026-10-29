@@ -464,9 +464,6 @@ def generar_excel(res, normativa):
 
     datos_resumen = {
         "Parámetro": [
-            "Subestación CFE",
-            "Circuito / Alimentador",
-            "Zona de Distribución CFE",
             "RPU / Registro de Usuario",
             "Número de Solicitud CFE",
             "Nivel de Tensión",
@@ -477,7 +474,7 @@ def generar_excel(res, normativa):
             "Potencia Reactiva Solicitada (Q en kvar)",
             "Potencia Aparente Solicitada (S en kVA)",
             "Corriente Nominal In (A)",
-            "Corriente de Diseño Id (1.25 In) (A)",
+            "Corriente de seguridad Id (1.25 In) (A)",
             "Capacidad Transformador Actual (kVA)",
             "Utilización Transformador vs 100% (%)",
             "Utilización Transformador vs 80% (%)",
@@ -498,9 +495,6 @@ def generar_excel(res, normativa):
             "Potencia Acumulada Total en Trafo (kVA)",
         ],
         "Valor": [
-            res.get("subestacion", "Puebla 2000"),
-            res.get("circuito", "PUE-4110"),
-            res.get("zona_cfe", "Puebla Poniente"),
             res.get("rpu", ""),
             res.get("solicitud", ""),
             res.get("nivel_tension", ""),
@@ -511,7 +505,7 @@ def generar_excel(res, normativa):
             res.get("q_kvar", 0.0),
             res.get("s_solicitada_kva", 0.0),
             res.get("i_nominal", 0.0),
-            res.get("i_diseno", 0.0),
+            res.get("i_seguridad", 0.0),
             res.get("trafo_kva", 0.0),
             f"{res.get('pct_trafo_100', 0.0)}%",
             f"{res.get('pct_trafo_80', 0.0)}%",
