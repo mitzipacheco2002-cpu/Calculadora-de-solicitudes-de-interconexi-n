@@ -454,12 +454,19 @@ def generar_grafica_Hosting_Capacity_conductor(i_diseno, ampacidad_cable):
 # ==============================================================================
 
 
-def generar_excel(res):
+def generar_excel(res, normativa):
     """Genera un reporte técnico estructurado en formato Excel usando BytesIO."""
     output = io.BytesIO()
 
+    # Unir los motivos en texto plano para el reporte de Excel
+    motivos_op_str = " | ".join(normativa.get("motivos_opinion", ["Cumple con las exenciones"])) if normativa.get("requiere_opinion") else "No requiere"
+    motivos_est_str = " | ".join(normativa.get("motivos_estudio", ["Procedimiento simplificado"])) if normativa.get("requiere_estudio") else "No requiere"
+
     datos_resumen = {
         "Parámetro": [
+            "Subestación CFE",
+            "Circuito / Alimentador",
+            "Zona de Distribución CFE",
             "RPU / Registro de Usuario",
             "Número de Solicitud CFE",
             "Nivel de Tensión",
@@ -482,11 +489,18 @@ def generar_excel(res):
             "Utilización Conductor vs 80% (%)",
             "Sugerencia Conductor",
             "Clase de Aislamiento",
+            "Requiere Opinión Técnica CFE",
+            "Motivos Opinión Técnica",
+            "Requiere Estudio de Interconexión",
+            "Motivos Estudio de Interconexión",
             "Evaluación Flujo Inverso Realizada",
             "Potencia FV Previa en Trafo (kVA)",
             "Potencia Acumulada Total en Trafo (kVA)",
         ],
         "Valor": [
+            res.get("subestacion", "Puebla 2000"),
+            res.get("circuito", "PUE-4110"),
+            res.get("zona_cfe", "Puebla Poniente"),
             res.get("rpu", ""),
             res.get("solicitud", ""),
             res.get("nivel_tension", ""),
@@ -509,6 +523,10 @@ def generar_excel(res):
             f"{res.get('pct_cond_80', 0.0)}%",
             res.get("calibre_sugerido", ""),
             res.get("clase_aislamiento", ""),
+            "SÍ" if normativa.get("requiere_opinion") else "NO",
+            motivos_op_str,
+            "SÍ" if normativa.get("requiere_estudio") else "NO",
+            motivos_est_str,
             "SÍ" if res.get("flujo_inverso_evaluado", False) else "NO",
             res.get("fv_conectada_kva", 0.0),
             res.get("potencia_total_kva", res.get("s_solicitada_kva", 0.0)),
@@ -538,13 +556,10 @@ def generar_excel(res):
     output.seek(0)
     return output.getvalue()
 
-
 # ==============================================================================
 # 5. EXPORTACIÓN A PDF (.PDF)
 # ==============================================================================
-
-# --- GENERADOR DEL PDF COMPLETO ---
-import io
+import io 
 
 try:
     import matplotlib.pyplot as plt  # type: ignore[reportMissingModuleSource]
@@ -613,7 +628,6 @@ def generar_grafica_porcentaje_utilizacion(res):
 
     for bar in bars:
         yval = bar.get_height()
-        # Ajuste de posición si choca con la línea de 100%
         if 85 <= yval <= 105:
             text_y = yval - (max_val * 0.08)
             va_align = "top"
@@ -644,18 +658,40 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
     story = []
 
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("HeaderTitle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=12, leading=14, alignment=1)
-    cell_style = ParagraphStyle("CellText", parent=styles["Normal"], fontName="Helvetica", fontSize=7, leading=8)
-    cell_bold = ParagraphStyle("CellBold", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7, leading=8)
+    title_style = ParagraphStyle("HeaderTitle", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11, leading=13, alignment=1)
+    cell_style = ParagraphStyle("CellText", parent=styles["Normal"], fontName="Helvetica", fontSize=7, leading=9)
+    cell_bold = ParagraphStyle("CellBold", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7, leading=9)
 
-    # Título y Tablas
+    # Título y Subestación
     story.append(Paragraph("<b>REPORTE DE ESTUDIO DE INTERCONEXIÓN Y FLUJOS DE POTENCIA</b>", title_style))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 5))
+
+    data_sub = [
+        [Paragraph("Subestación CFE:", cell_bold), Paragraph(str(res.get("subestacion", "Puebla 2000")), cell_style), 
+         Paragraph("Circuito:", cell_bold), Paragraph(str(res.get("circuito", "PUE-4110")), cell_style),
+         Paragraph("Zona CFE:", cell_bold), Paragraph(str(res.get("zona_cfe", "Puebla Poniente")), cell_style)]
+    ]
+    t_sub = Table(data_sub, colWidths=[85, 115, 55, 95, 60, 130])
+    t_sub.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#A0A0A0")),
+        ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#EBF5FB")),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+        ("TOPPADDING", (0,0), (-1,-1), 2),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ]))
+    story.append(t_sub)
+    story.append(Spacer(1, 5))
+
+    dictamen_trafo_str = "APTO" if res.get("trafo_soporta", True) else "RECHAZADO"
+    rec_trafo_str = "Sin cambio" if res.get("trafo_soporta", True) else f"Cambiar a {res.get('trafo_sugerido_kva')} kVA"
+    
+    dictamen_cond_str = "APTO" if res.get("cable_soporta", True) else "NO APTO"
+    rec_cond_str = "Sin cambio" if res.get("cable_soporta", True) else f"Cambiar a {res.get('calibre_sugerido')}"
 
     data_t1 = [
         ["Componente", "Capacidad Actual", "Dictamen Técnico", "Recomendación"],
-        ["Transformador", f"{res.get('trafo_kva', 15.0)} kVA", res.get("dictamen_trafo", "RECHAZADO"), res.get("rec_trafo", "Cambiar a 25.0 kVA")],
-        ["Conductor", res.get("cable_info", "8 AWG"), res.get("dictamen_cond", "NO APTO"), res.get("rec_cond", "Sin cambio")]
+        ["Transformador", f"{res.get('trafo_kva', 15.0)} kVA", dictamen_trafo_str, rec_trafo_str],
+        ["Conductor", f"{res.get('calibre_cable', '8 AWG')} ({res.get('material_cable', 'Cobre')})", dictamen_cond_str, rec_cond_str]
     ]
     t1 = Table(data_t1, colWidths=[130, 130, 140, 140])
     t1.setStyle(TableStyle([
@@ -668,14 +704,14 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
         ("TOPPADDING", (0,0), (-1,-1), 3),
     ]))
     story.append(t1)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 5))
 
     data_t2 = [
         [Paragraph("RPU / Registro:", cell_bold), Paragraph(str(res.get("rpu", "123456789012")), cell_style), Paragraph("No. Solicitud:", cell_bold), Paragraph(str(res.get("solicitud", "SOL-2026-099")), cell_style)],
-        [Paragraph("Nivel Tensión:", cell_bold), Paragraph(str(res.get("nivel_tension", "BAJA TENSIÓN (BT)")), cell_style), Paragraph("Esquema Fases:", cell_bold), Paragraph(str(res.get("esquema_fases", "Monofásico 2 hilos (1F-2H)")), cell_style)],
+        [Paragraph("Nivel Tensión:", cell_bold), Paragraph(str(res.get("nivel_tension", "BAJA TENSIÓN (BT)")), cell_style), Paragraph("Esquema Fases:", cell_bold), Paragraph(str(res.get("fases", "")), cell_style)],
         [Paragraph("Potencia Activa (P):", cell_bold), Paragraph(f"{res.get('p_kw', 15.0):.1f} kW", cell_style), Paragraph("Potencia Reactiva (Q):", cell_bold), Paragraph(f"{res.get('q_kvar', 7.26):.2f} kVAR", cell_style)],
-        [Paragraph("Potencia Aparente (S):", cell_bold), Paragraph(f"{res.get('s_solicitada_kva', 16.67):.2f} kVA", cell_style), Paragraph("Flujo Inverso Red:", cell_bold), Paragraph(f"{res.get('flujo_inverso_kw', 12.3):.1f} kW", cell_style)],
-        [Paragraph("Corriente Nominal (In):", cell_bold), Paragraph(f"{res.get('i_nom', 131.23):.2f} A", cell_style), Paragraph("Corriente Diseño (1.25):", cell_bold), Paragraph(f"{res.get('i_diseno', 173.61):.2f} A", cell_style)],
+        [Paragraph("Potencia Aparente (S):", cell_bold), Paragraph(f"{res.get('s_solicitada_kva', 16.67):.2f} kVA", cell_style), Paragraph("Flujo Inverso Red:", cell_bold), Paragraph(f"{res.get('flujo_inverso_kw', 0.0):.1f} kW", cell_style)],
+        [Paragraph("Corriente Nominal (In):", cell_bold), Paragraph(f"{res.get('i_nominal', 0.0):.2f} A", cell_bold), Paragraph("Corriente Diseño (1.25):", cell_bold), Paragraph(f"{res.get('i_diseno', 0.0):.2f} A", cell_style)],
     ]
     t2 = Table(data_t2, colWidths=[120, 150, 120, 150])
     t2.setStyle(TableStyle([
@@ -685,26 +721,41 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
         ("TOPPADDING", (0,0), (-1,-1), 2),
     ]))
     story.append(t2)
-    story.append(Spacer(1, 6))
+    story.append(Spacer(1, 5))
+
+    # --- LECTURA DINÁMICA DE LA NORMATIVA (OPINIÓN TÉCNICA Y ESTUDIO) ---
+    op_texto = "REQUIERE" if normativa.get("requiere_opinion") else "NO REQUIERE"
+    motivos_op_list = normativa.get("motivos_opinion", [])
+    if motivos_op_list:
+        html_op = "<br/>".join([f"• {m}" for m in motivos_op_list])
+    else:
+        html_op = "• Cumple con las exenciones del procedimiento técnico."
+
+    est_texto = "REQUIERE" if normativa.get("requiere_estudio") else "NO REQUIERE"
+    motivos_est_list = normativa.get("motivos_estudio", [])
+    if motivos_est_list:
+        html_est = "<br/>".join([f"• {m}" for m in motivos_est_list])
+    else:
+        html_est = "• El proyecto califica para el procedimiento simplificado."
 
     data_t3 = [
         ["Trámite / Requerimiento", "Resultado", "Rubro / Criterio Aplicado"],
-        ["Opinión Técnica (CFE)", res.get("opinion_tec", "REQUIERE"), Paragraph("- Criterio I (BT): Generación Monofásica mayor a 5 kW.<br/>- Criterio II: Capacidad de generación supera la carga contratada.", cell_style)],
-        ["Estudio de Interconexión", res.get("estudio_inter", "REQUIERE"), Paragraph("- Criterio I (BT): La capacidad agregada excede el 80% del trafo.<br/>- Criterio II (BT): La corriente calculada excede el 80% del conductor.", cell_style)],
+        ["Opinión Técnica (CFE)", op_texto, Paragraph(html_op, cell_style)],
+        ["Estudio de Interconexión", est_texto, Paragraph(html_est, cell_style)],
     ]
-    t3 = Table(data_t3, colWidths=[150, 100, 290])
+    t3 = Table(data_t3, colWidths=[140, 95, 305])
     t3.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F618D")),
         ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("ALIGN", (0,0), (1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
         ("GRID", (0,0), (-1,-1), 0.5, colors.HexColor("#A0A0A0")),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("BOTTOMPADDING", (0,0), (-1,-1), 3),
         ("TOPPADDING", (0,0), (-1,-1), 3),
     ]))
     story.append(t3)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # CONVERTIDOR DE MATPLOTLIB A IMAGEN REPORTLAB
     def fig_a_img(fig, width=350, height=130):
@@ -716,15 +767,11 @@ def generar_pdf(res, normativa="NOM-001-SEDE"):
         img.hAlign = "CENTER"
         return img
 
-    # --- GENERAR E INSERTA LAS 3 GRÁFICAS DIRECTAMENTE ---
-    
-    # 1. Triángulo de Potencias
+    # --- GENERAR E INSERTAR LAS 2 GRÁFICAS ---
     fig_tri = generar_grafica_triangulo(res)
     story.append(fig_a_img(fig_tri))
     story.append(Spacer(1, 4))
 
-
-    # 3. Utilización del Sistema (4 barras)
     fig_pct = generar_grafica_porcentaje_utilizacion(res)
     story.append(fig_a_img(fig_pct))
 
